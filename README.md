@@ -49,9 +49,9 @@ If capture is not working yet, open WebOn and click **Create test task**. If tha
 ## Use
 
 1. Right-click any normal webpage, with or without selected text.
-2. Choose **Add selection to task list** to edit the task before saving, or **Add task directly** to save immediately.
-3. WebOn captures selected text when present. If nothing is selected, it starts from the page title and URL instead.
-4. The task captures the selected text when present, page title, URL, creation timestamp, and visible-page screenshot.
+2. Choose **Add selection to task list** to capture selected text, page context, and a screenshot.
+3. Choose **Add manual task** to open a blank modal with no screenshot or page context.
+4. Saved capture tasks include selected text when present, page title, URL, creation timestamp, and visible-page screenshot.
 
 The quick-add modal closes automatically after 30 seconds if it is not saved. When the task name is changed, the original selected text is still preserved in the notes.
 

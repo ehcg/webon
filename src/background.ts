@@ -118,7 +118,7 @@ async function recreateContextMenus(): Promise<void> {
   try {
     await removeAllContextMenus();
     createMenuItem(QUICK_MENU_ID, "Add selection to task list");
-    createMenuItem(DIRECT_MENU_ID, "Add task directly");
+    createMenuItem(DIRECT_MENU_ID, "Add manual task");
     createMenuItem(OPEN_LIST_MENU_ID, "Open WebOn task list");
     console.info("WebOn context menus registered.");
   } catch (error) {
@@ -158,32 +158,32 @@ function notifyTaskViews(): void {
 }
 
 async function handleDirectAdd(info: any, tab: any): Promise<void> {
-  const selectedText = await resolveSelectedText(info, tab);
-
-  if (!selectedText && typeof tab?.id === "number") {
-    await handleQuickAdd(info, tab);
+  if (typeof tab?.id !== "number") {
     return;
   }
 
-  const draft = await createDraft(info, tab, selectedText, {
-    captureScreenshot: true
-  });
-  const task = await buildTask({
-    ...draft,
-    name: draft.defaultName,
-    dueDate: null,
-    notes: selectedText
-  });
+  const draft = createManualDraft();
 
-  await saveTask(task);
-  notifyTaskViews();
-
-  if (typeof tab?.id === "number") {
-    void sendMessageToTabWithFallback(tab.id, {
-      type: "TASK_ADDED_TOAST",
-      name: task.name
-    }).catch(() => undefined);
+  try {
+    await sendMessageToTabWithFallback(tab.id, {
+      type: "SHOW_QUICK_ADD_TASK",
+      draft
+    });
+  } catch (error) {
+    console.warn("Could not show manual task popup.", error);
   }
+}
+
+function createManualDraft(): QuickAddDraft {
+  return {
+    id: createId("draft"),
+    selectedText: "",
+    pageTitle: "Manual task",
+    pageUrl: "",
+    createdAt: new Date().toISOString(),
+    screenshotId: null,
+    defaultName: ""
+  };
 }
 
 async function handleSaveQuickTask(payload: QuickAddPayload): Promise<TodoTask> {
