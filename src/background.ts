@@ -12,6 +12,8 @@ declare const chrome: any;
 const QUICK_MENU_ID = "add-selection-to-task-list";
 const DIRECT_MENU_ID = "add-task-directly";
 const OPEN_LIST_MENU_ID = "open-webon-task-list";
+const TASKS_CHANGED_MESSAGE = "TASKS_CHANGED";
+const TASKS_CHANGED_FROM_APP_MESSAGE = "TASKS_CHANGED_FROM_APP";
 const TASK_NAME_LIMIT = 90;
 
 let contextMenuRegistration: Promise<void> = Promise.resolve();
@@ -44,7 +46,10 @@ chrome.runtime.onMessage.addListener(
   (message: any, _sender: any, sendResponse: (response: unknown) => void) => {
     if (message?.type === "SAVE_QUICK_TASK") {
       void handleSaveQuickTask(message.payload)
-        .then((task) => sendResponse({ ok: true, taskId: task.id }))
+        .then((task) => {
+          notifyTaskViews();
+          sendResponse({ ok: true, taskId: task.id });
+        })
         .catch((error) =>
           sendResponse({ ok: false, error: getErrorMessage(error) })
         );
@@ -66,6 +71,12 @@ chrome.runtime.onMessage.addListener(
       return false;
     }
 
+    if (message?.type === TASKS_CHANGED_FROM_APP_MESSAGE) {
+      notifyTaskViews();
+      sendResponse({ ok: true });
+      return false;
+    }
+
     return false;
   }
 );
@@ -76,7 +87,9 @@ async function handleQuickAdd(info: any, tab: any): Promise<void> {
   }
 
   const selectedText = await resolveSelectedText(info, tab);
-  const draft = await createDraft(info, tab, selectedText);
+  const draft = await createDraft(info, tab, selectedText, {
+    captureScreenshot: Boolean(selectedText)
+  });
 
   try {
     await sendMessageToTabWithFallback(tab.id, {
@@ -134,17 +147,36 @@ function createMenuItem(id: string, title: string): void {
   });
 }
 
+function notifyTaskViews(): void {
+  chrome.runtime.sendMessage(
+    { type: TASKS_CHANGED_MESSAGE, changedAt: new Date().toISOString() },
+    () => {
+      // No open task page is fine; Chrome reports that as a lastError.
+      void chrome.runtime.lastError;
+    }
+  );
+}
+
 async function handleDirectAdd(info: any, tab: any): Promise<void> {
   const selectedText = await resolveSelectedText(info, tab);
-  const draft = await createDraft(info, tab, selectedText);
+
+  if (!selectedText && typeof tab?.id === "number") {
+    await handleQuickAdd(info, tab);
+    return;
+  }
+
+  const draft = await createDraft(info, tab, selectedText, {
+    captureScreenshot: true
+  });
   const task = await buildTask({
     ...draft,
     name: draft.defaultName,
     dueDate: null,
-    notes: selectedText || getFallbackNotes(draft)
+    notes: selectedText
   });
 
   await saveTask(task);
+  notifyTaskViews();
 
   if (typeof tab?.id === "number") {
     void sendMessageToTabWithFallback(tab.id, {
@@ -163,12 +195,15 @@ async function handleSaveQuickTask(payload: QuickAddPayload): Promise<TodoTask> 
 async function createDraft(
   info: any,
   tab: any,
-  selectedText: string
+  selectedText: string,
+  options: { captureScreenshot: boolean }
 ): Promise<QuickAddDraft> {
   const pageUrl = tab?.url || info.pageUrl || "";
   const pageTitle = tab?.title || pageUrl || "Untitled page";
-  const taskSeedText = selectedText || pageTitle || pageUrl || "Untitled task";
-  const screenshotId = await captureAndStoreScreenshot(tab, pageUrl);
+  const taskSeedText = selectedText || "";
+  const screenshotId = options.captureScreenshot
+    ? await captureAndStoreScreenshot(tab, pageUrl)
+    : null;
 
   return {
     id: createId("draft"),
@@ -177,7 +212,7 @@ async function createDraft(
     pageUrl,
     createdAt: new Date().toISOString(),
     screenshotId,
-    defaultName: truncateTaskName(taskSeedText)
+    defaultName: taskSeedText ? truncateTaskName(taskSeedText) : ""
   };
 }
 
@@ -318,13 +353,6 @@ async function resolveSelectedText(info: any, tab: any): Promise<string> {
   } catch {
     return "";
   }
-}
-
-function getFallbackNotes(draft: QuickAddDraft): string {
-  if (draft.pageUrl) {
-    return `Captured from ${draft.pageTitle}\n${draft.pageUrl}`;
-  }
-  return `Captured from ${draft.pageTitle}`;
 }
 
 function truncateTaskName(text: string): string {

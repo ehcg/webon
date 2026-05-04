@@ -252,7 +252,7 @@ function showQuickAdd(draft: QuickAddDraft): void {
 
   page.textContent = draft.pageTitle || draft.pageUrl || "Source page";
   taskName.value = draft.defaultName;
-  notes.value = draft.selectedText || fallbackDraftNotes(draft);
+  notes.value = draft.selectedText;
 
   let secondsLeft = QUICK_ADD_TIMEOUT_SECONDS;
   let saved = false;
@@ -412,13 +412,6 @@ function readSelectedText(): string {
   }
 
   return "";
-}
-
-function fallbackDraftNotes(draft: QuickAddDraft): string {
-  if (draft.pageUrl) {
-    return `Captured from ${draft.pageTitle}\n${draft.pageUrl}`;
-  }
-  return `Captured from ${draft.pageTitle}`;
 }
 
 function query<T extends Element>(

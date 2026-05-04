@@ -2,6 +2,8 @@ import { createId, deleteScreenshot, getNextOrder, saveScreenshot, saveTask } fr
 const QUICK_MENU_ID = "add-selection-to-task-list";
 const DIRECT_MENU_ID = "add-task-directly";
 const OPEN_LIST_MENU_ID = "open-webon-task-list";
+const TASKS_CHANGED_MESSAGE = "TASKS_CHANGED";
+const TASKS_CHANGED_FROM_APP_MESSAGE = "TASKS_CHANGED_FROM_APP";
 const TASK_NAME_LIMIT = 90;
 let contextMenuRegistration = Promise.resolve();
 void registerContextMenus();
@@ -25,7 +27,10 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === "SAVE_QUICK_TASK") {
         void handleSaveQuickTask(message.payload)
-            .then((task) => sendResponse({ ok: true, taskId: task.id }))
+            .then((task) => {
+            notifyTaskViews();
+            sendResponse({ ok: true, taskId: task.id });
+        })
             .catch((error) => sendResponse({ ok: false, error: getErrorMessage(error) }));
         return true;
     }
@@ -40,6 +45,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         sendResponse({ ok: true });
         return false;
     }
+    if (message?.type === TASKS_CHANGED_FROM_APP_MESSAGE) {
+        notifyTaskViews();
+        sendResponse({ ok: true });
+        return false;
+    }
     return false;
 });
 async function handleQuickAdd(info, tab) {
@@ -47,7 +57,9 @@ async function handleQuickAdd(info, tab) {
         return;
     }
     const selectedText = await resolveSelectedText(info, tab);
-    const draft = await createDraft(info, tab, selectedText);
+    const draft = await createDraft(info, tab, selectedText, {
+        captureScreenshot: Boolean(selectedText)
+    });
     try {
         await sendMessageToTabWithFallback(tab.id, {
             type: "SHOW_QUICK_ADD_TASK",
@@ -97,16 +109,29 @@ function createMenuItem(id, title) {
         contexts: ["all"]
     });
 }
+function notifyTaskViews() {
+    chrome.runtime.sendMessage({ type: TASKS_CHANGED_MESSAGE, changedAt: new Date().toISOString() }, () => {
+        // No open task page is fine; Chrome reports that as a lastError.
+        void chrome.runtime.lastError;
+    });
+}
 async function handleDirectAdd(info, tab) {
     const selectedText = await resolveSelectedText(info, tab);
-    const draft = await createDraft(info, tab, selectedText);
+    if (!selectedText && typeof tab?.id === "number") {
+        await handleQuickAdd(info, tab);
+        return;
+    }
+    const draft = await createDraft(info, tab, selectedText, {
+        captureScreenshot: true
+    });
     const task = await buildTask({
         ...draft,
         name: draft.defaultName,
         dueDate: null,
-        notes: selectedText || getFallbackNotes(draft)
+        notes: selectedText
     });
     await saveTask(task);
+    notifyTaskViews();
     if (typeof tab?.id === "number") {
         void sendMessageToTabWithFallback(tab.id, {
             type: "TASK_ADDED_TOAST",
@@ -119,11 +144,13 @@ async function handleSaveQuickTask(payload) {
     await saveTask(task);
     return task;
 }
-async function createDraft(info, tab, selectedText) {
+async function createDraft(info, tab, selectedText, options) {
     const pageUrl = tab?.url || info.pageUrl || "";
     const pageTitle = tab?.title || pageUrl || "Untitled page";
-    const taskSeedText = selectedText || pageTitle || pageUrl || "Untitled task";
-    const screenshotId = await captureAndStoreScreenshot(tab, pageUrl);
+    const taskSeedText = selectedText || "";
+    const screenshotId = options.captureScreenshot
+        ? await captureAndStoreScreenshot(tab, pageUrl)
+        : null;
     return {
         id: createId("draft"),
         selectedText,
@@ -131,7 +158,7 @@ async function createDraft(info, tab, selectedText) {
         pageUrl,
         createdAt: new Date().toISOString(),
         screenshotId,
-        defaultName: truncateTaskName(taskSeedText)
+        defaultName: taskSeedText ? truncateTaskName(taskSeedText) : ""
     };
 }
 async function buildTask(payload) {
@@ -233,12 +260,6 @@ async function resolveSelectedText(info, tab) {
     catch {
         return "";
     }
-}
-function getFallbackNotes(draft) {
-    if (draft.pageUrl) {
-        return `Captured from ${draft.pageTitle}\n${draft.pageUrl}`;
-    }
-    return `Captured from ${draft.pageTitle}`;
 }
 function truncateTaskName(text) {
     const compact = text.replace(/\s+/g, " ").trim();

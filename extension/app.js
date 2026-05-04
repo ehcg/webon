@@ -1,5 +1,7 @@
 import { createId, exportBackup, getAllTasks, getNextOrder, getScreenshot, getSetting, importBackup, saveTask, saveTasks, setSetting } from "./db.js";
 const DEFAULT_FILE_NAME = "webon-data.json";
+const TASKS_CHANGED_MESSAGE = "TASKS_CHANGED";
+const TASKS_CHANGED_FROM_APP_MESSAGE = "TASKS_CHANGED_FROM_APP";
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 let tasks = [];
 let activeFilter = "all";
@@ -29,9 +31,22 @@ document.addEventListener("DOMContentLoaded", () => {
     void initialize();
 });
 async function initialize() {
+    bindRuntimeEvents();
     bindEvents();
     await showFirstRunPanelIfNeeded();
     await refreshTasks();
+}
+function bindRuntimeEvents() {
+    if (typeof chrome === "undefined" || !chrome.runtime?.onMessage) {
+        return;
+    }
+    chrome.runtime.onMessage.addListener((message) => {
+        if (message?.type === TASKS_CHANGED_MESSAGE) {
+            void refreshFromExternalChange();
+            return false;
+        }
+        return false;
+    });
 }
 function bindEvents() {
     elements.chooseFileButton.addEventListener("click", () => {
@@ -202,6 +217,7 @@ async function updateTask(taskId, changes) {
     await saveTask({ ...task, ...changes });
     await refreshTasks();
     await syncToChosenFile(false);
+    notifyTasksChangedFromApp();
 }
 async function moveTask(taskId, direction) {
     const visibleTasks = getVisibleTasks();
@@ -218,6 +234,7 @@ async function moveTask(taskId, direction) {
     await saveTasks([current, target]);
     await refreshTasks();
     await syncToChosenFile(false);
+    notifyTasksChangedFromApp();
 }
 function getVisibleTasks() {
     return tasks
@@ -368,6 +385,7 @@ async function createTestTask() {
     await refreshTasks();
     await syncToChosenFile(false);
     setStatus("Created a WebOn test task.");
+    notifyTasksChangedFromApp();
 }
 function getTaskListLink() {
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
@@ -386,6 +404,7 @@ async function importJsonBackup() {
         await refreshTasks();
         await syncToChosenFile(false);
         setStatus("Imported JSON backup.");
+        notifyTasksChangedFromApp();
     }
     catch (error) {
         setStatus(getErrorMessage(error));
@@ -393,6 +412,19 @@ async function importJsonBackup() {
     finally {
         elements.importInput.value = "";
     }
+}
+async function refreshFromExternalChange() {
+    await refreshTasks();
+    await syncToChosenFile(false);
+    setStatus("Task list updated.");
+}
+function notifyTasksChangedFromApp() {
+    if (typeof chrome === "undefined" || !chrome.runtime?.sendMessage) {
+        return;
+    }
+    chrome.runtime.sendMessage({ type: TASKS_CHANGED_FROM_APP_MESSAGE, changedAt: new Date().toISOString() }, () => {
+        void chrome.runtime.lastError;
+    });
 }
 function formatDateTime(value) {
     const date = new Date(value);

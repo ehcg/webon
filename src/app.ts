@@ -32,6 +32,8 @@ declare global {
 }
 
 const DEFAULT_FILE_NAME = "webon-data.json";
+const TASKS_CHANGED_MESSAGE = "TASKS_CHANGED";
+const TASKS_CHANGED_FROM_APP_MESSAGE = "TASKS_CHANGED_FROM_APP";
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 let tasks: TodoTask[] = [];
@@ -65,9 +67,24 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 async function initialize(): Promise<void> {
+  bindRuntimeEvents();
   bindEvents();
   await showFirstRunPanelIfNeeded();
   await refreshTasks();
+}
+
+function bindRuntimeEvents(): void {
+  if (typeof chrome === "undefined" || !chrome.runtime?.onMessage) {
+    return;
+  }
+
+  chrome.runtime.onMessage.addListener((message: any) => {
+    if (message?.type === TASKS_CHANGED_MESSAGE) {
+      void refreshFromExternalChange();
+      return false;
+    }
+    return false;
+  });
 }
 
 function bindEvents(): void {
@@ -276,6 +293,7 @@ async function updateTask(
   await saveTask({ ...task, ...changes });
   await refreshTasks();
   await syncToChosenFile(false);
+  notifyTasksChangedFromApp();
 }
 
 async function moveTask(taskId: string, direction: -1 | 1): Promise<void> {
@@ -296,6 +314,7 @@ async function moveTask(taskId: string, direction: -1 | 1): Promise<void> {
   await saveTasks([current, target]);
   await refreshTasks();
   await syncToChosenFile(false);
+  notifyTasksChangedFromApp();
 }
 
 function getVisibleTasks(): TodoTask[] {
@@ -466,6 +485,7 @@ async function createTestTask(): Promise<void> {
   await refreshTasks();
   await syncToChosenFile(false);
   setStatus("Created a WebOn test task.");
+  notifyTasksChangedFromApp();
 }
 
 function getTaskListLink(): string {
@@ -487,11 +507,31 @@ async function importJsonBackup(): Promise<void> {
     await refreshTasks();
     await syncToChosenFile(false);
     setStatus("Imported JSON backup.");
+    notifyTasksChangedFromApp();
   } catch (error) {
     setStatus(getErrorMessage(error));
   } finally {
     elements.importInput.value = "";
   }
+}
+
+async function refreshFromExternalChange(): Promise<void> {
+  await refreshTasks();
+  await syncToChosenFile(false);
+  setStatus("Task list updated.");
+}
+
+function notifyTasksChangedFromApp(): void {
+  if (typeof chrome === "undefined" || !chrome.runtime?.sendMessage) {
+    return;
+  }
+
+  chrome.runtime.sendMessage(
+    { type: TASKS_CHANGED_FROM_APP_MESSAGE, changedAt: new Date().toISOString() },
+    () => {
+      void chrome.runtime.lastError;
+    }
+  );
 }
 
 function formatDateTime(value: string): string {

@@ -224,7 +224,7 @@ function showQuickAdd(draft) {
     const backdrop = query(shadow, ".backdrop");
     page.textContent = draft.pageTitle || draft.pageUrl || "Source page";
     taskName.value = draft.defaultName;
-    notes.value = draft.selectedText || fallbackDraftNotes(draft);
+    notes.value = draft.selectedText;
     let secondsLeft = QUICK_ADD_TIMEOUT_SECONDS;
     let saved = false;
     const updateTimer = () => {
@@ -366,12 +366,6 @@ function readSelectedText() {
         return activeElement.value.slice(start, end).trim();
     }
     return "";
-}
-function fallbackDraftNotes(draft) {
-    if (draft.pageUrl) {
-        return `Captured from ${draft.pageTitle}\n${draft.pageUrl}`;
-    }
-    return `Captured from ${draft.pageTitle}`;
 }
 function query(root, selector) {
     const element = root.querySelector(selector);
