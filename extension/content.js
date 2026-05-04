@@ -1,7 +1,7 @@
 "use strict";
 const QUICK_ADD_TIMEOUT_SECONDS = 30;
-if (!window.__localFirstTodoContentLoaded) {
-    window.__localFirstTodoContentLoaded = true;
+if (!window.__webOnContentLoaded) {
+    window.__webOnContentLoaded = true;
     chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         if (message?.type === "SHOW_QUICK_ADD_TASK") {
             showQuickAdd(message.draft);
@@ -17,10 +17,10 @@ if (!window.__localFirstTodoContentLoaded) {
     });
 }
 function showQuickAdd(draft) {
-    window.__localFirstTodoCleanup?.();
+    window.__webOnCleanup?.();
     // Shadow DOM keeps the quick-add UI readable without inheriting page styles.
     const host = document.createElement("div");
-    host.dataset.localFirstTodo = "quick-add";
+    host.dataset.webOn = "quick-add";
     const shadow = host.attachShadow({ mode: "open" });
     shadow.innerHTML = `
     <style>
@@ -239,7 +239,7 @@ function showQuickAdd(draft) {
         window.clearTimeout(timeoutId);
         document.removeEventListener("keydown", onKeydown, true);
         host.remove();
-        window.__localFirstTodoCleanup = undefined;
+        window.__webOnCleanup = undefined;
         if (discardScreenshot && !saved) {
             void sendRuntimeMessage({
                 type: "DISCARD_QUICK_TASK",
@@ -288,7 +288,7 @@ function showQuickAdd(draft) {
         }
     });
     document.addEventListener("keydown", onKeydown, true);
-    window.__localFirstTodoCleanup = () => cleanup(true);
+    window.__webOnCleanup = () => cleanup(true);
     document.documentElement.append(host);
     updateTimer();
     taskName.focus();

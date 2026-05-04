@@ -1,6 +1,6 @@
 import type { BackupData, ScreenshotRecord, TodoTask } from "./types.js";
 
-const DB_NAME = "local-first-todo-extension";
+const DB_NAME = "webon";
 const DB_VERSION = 1;
 const TASK_STORE = "tasks";
 const SCREENSHOT_STORE = "screenshots";

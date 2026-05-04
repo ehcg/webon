@@ -1,8 +1,8 @@
 declare const chrome: any;
 
 interface Window {
-  __localFirstTodoContentLoaded?: boolean;
-  __localFirstTodoCleanup?: () => void;
+  __webOnContentLoaded?: boolean;
+  __webOnCleanup?: () => void;
 }
 
 interface QuickAddDraft {
@@ -17,8 +17,8 @@ interface QuickAddDraft {
 
 const QUICK_ADD_TIMEOUT_SECONDS = 30;
 
-if (!window.__localFirstTodoContentLoaded) {
-  window.__localFirstTodoContentLoaded = true;
+if (!window.__webOnContentLoaded) {
+  window.__webOnContentLoaded = true;
 
   chrome.runtime.onMessage.addListener(
     (message: any, _sender: any, sendResponse: (response: unknown) => void) => {
@@ -40,11 +40,11 @@ if (!window.__localFirstTodoContentLoaded) {
 }
 
 function showQuickAdd(draft: QuickAddDraft): void {
-  window.__localFirstTodoCleanup?.();
+  window.__webOnCleanup?.();
 
   // Shadow DOM keeps the quick-add UI readable without inheriting page styles.
   const host = document.createElement("div");
-  host.dataset.localFirstTodo = "quick-add";
+  host.dataset.webOn = "quick-add";
   const shadow = host.attachShadow({ mode: "open" });
 
   shadow.innerHTML = `
@@ -271,7 +271,7 @@ function showQuickAdd(draft: QuickAddDraft): void {
     window.clearTimeout(timeoutId);
     document.removeEventListener("keydown", onKeydown, true);
     host.remove();
-    window.__localFirstTodoCleanup = undefined;
+    window.__webOnCleanup = undefined;
 
     if (discardScreenshot && !saved) {
       void sendRuntimeMessage({
@@ -326,7 +326,7 @@ function showQuickAdd(draft: QuickAddDraft): void {
   });
 
   document.addEventListener("keydown", onKeydown, true);
-  window.__localFirstTodoCleanup = () => cleanup(true);
+  window.__webOnCleanup = () => cleanup(true);
   document.documentElement.append(host);
   updateTimer();
   taskName.focus();

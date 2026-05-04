@@ -27,7 +27,7 @@ declare global {
   }
 }
 
-const DEFAULT_FILE_NAME = "todo-list-data.json";
+const DEFAULT_FILE_NAME = "webon-data.json";
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 let tasks: TodoTask[] = [];
@@ -102,7 +102,7 @@ async function showFirstRunPanelIfNeeded(): Promise<void> {
 async function markFirstRunComplete(): Promise<void> {
   await setSetting("fileSetupSeen", true);
   elements.firstRunPanel.hidden = true;
-  setStatus("Using IndexedDB for local task storage.");
+  setStatus("Using IndexedDB for WebOn task storage.");
 }
 
 async function refreshTasks(): Promise<void> {

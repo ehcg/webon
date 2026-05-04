@@ -1,5 +1,5 @@
 import { exportBackup, getAllTasks, getScreenshot, getSetting, importBackup, saveTask, saveTasks, setSetting } from "./db.js";
-const DEFAULT_FILE_NAME = "todo-list-data.json";
+const DEFAULT_FILE_NAME = "webon-data.json";
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 let tasks = [];
 let activeFilter = "all";
@@ -66,7 +66,7 @@ async function showFirstRunPanelIfNeeded() {
 async function markFirstRunComplete() {
     await setSetting("fileSetupSeen", true);
     elements.firstRunPanel.hidden = true;
-    setStatus("Using IndexedDB for local task storage.");
+    setStatus("Using IndexedDB for WebOn task storage.");
 }
 async function refreshTasks() {
     tasks = await getAllTasks();

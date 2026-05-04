@@ -1,6 +1,6 @@
-# Local-first Selection To-do Extension
+# WebOn
 
-Manifest V3 Chrome/Edge extension that captures selected webpage text into a local-only to-do list. Tasks are stored in IndexedDB, screenshots are stored locally as data URL records, and the task page supports JSON backup import/export plus an optional File System Access API save file.
+WebOn is a Manifest V3 Chrome/Edge extension that captures selected webpage text into a local-only task list. Tasks are stored in IndexedDB, screenshots are stored locally as data URL records, and the task page supports JSON backup import/export plus an optional File System Access API save file.
 
 ## Project Structure
 
@@ -11,9 +11,9 @@ Manifest V3 Chrome/Edge extension that captures selected webpage text into a loc
 │   ├── background.js       # Context menus, screenshots, task creation
 │   ├── content.js          # In-page quick-add modal and toast
 │   ├── db.js               # IndexedDB storage module
-│   ├── app.html            # Extension-hosted to-do webpage
+│   ├── app.html            # Extension-hosted WebOn webpage
 │   ├── app.css             # Light/dark responsive task UI
-│   └── app.js              # To-do page behavior
+│   └── app.js              # WebOn page behavior
 ├── src/
 │   ├── background.ts
 │   ├── content.ts
@@ -47,7 +47,7 @@ The quick-add modal closes automatically after 30 seconds if it is not saved. Wh
 ## Local Storage and Backups
 
 - Tasks and screenshot records are stored locally in IndexedDB.
-- On first task-page launch, the app suggests `todo-list-data.json` as the default backup filename.
+- On first task-page launch, WebOn suggests `webon-data.json` as the default backup filename.
 - Where supported, **Choose save file** uses the File System Access API and writes a JSON backup to the selected local file.
 - **Export JSON** downloads a full backup.
 - **Import JSON** restores tasks and screenshot records from a backup.
