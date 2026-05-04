@@ -11,6 +11,7 @@ declare const chrome: any;
 
 const QUICK_MENU_ID = "add-selection-to-task-list";
 const DIRECT_MENU_ID = "add-task-directly";
+const OPEN_LIST_MENU_ID = "open-webon-task-list";
 const TASK_NAME_LIMIT = 90;
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -27,11 +28,17 @@ chrome.runtime.onInstalled.addListener(() => {
       title: "Add task directly",
       contexts: ["all"]
     });
+
+    chrome.contextMenus.create({
+      id: OPEN_LIST_MENU_ID,
+      title: "Open WebOn task list",
+      contexts: ["all"]
+    });
   });
 });
 
 chrome.action.onClicked.addListener(() => {
-  chrome.tabs.create({ url: chrome.runtime.getURL("app.html") });
+  openTaskList();
 });
 
 chrome.contextMenus.onClicked.addListener((info: any, tab: any) => {
@@ -41,6 +48,10 @@ chrome.contextMenus.onClicked.addListener((info: any, tab: any) => {
 
   if (info.menuItemId === DIRECT_MENU_ID) {
     void handleDirectAdd(info, tab);
+  }
+
+  if (info.menuItemId === OPEN_LIST_MENU_ID) {
+    openTaskList();
   }
 });
 
@@ -65,7 +76,7 @@ chrome.runtime.onMessage.addListener(
     }
 
     if (message?.type === "OPEN_TASK_LIST") {
-      chrome.tabs.create({ url: chrome.runtime.getURL("app.html") });
+      openTaskList();
       sendResponse({ ok: true });
       return false;
     }
@@ -91,6 +102,10 @@ async function handleQuickAdd(info: any, tab: any): Promise<void> {
     console.warn("Could not show quick-add task popup.", error);
     await discardDraftScreenshot(draft.screenshotId);
   }
+}
+
+function openTaskList(): void {
+  chrome.tabs.create({ url: chrome.runtime.getURL("app.html") });
 }
 
 async function handleDirectAdd(info: any, tab: any): Promise<void> {

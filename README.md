@@ -35,6 +35,14 @@ The `src/` TypeScript files are the source. The `extension/` JavaScript files ar
 5. Select the `extension/` folder in this project.
 6. Click the extension icon to open the task list.
 
+The task list URL is:
+
+```text
+chrome-extension://EXTENSION_ID/app.html
+```
+
+Replace `EXTENSION_ID` with the ID shown for WebOn in `chrome://extensions`. You can also right-click any normal webpage and choose **Open WebOn task list**, or use **Copy list link** inside WebOn after it opens.
+
 ## Use
 
 1. Right-click any normal webpage, with or without selected text.

@@ -7,6 +7,7 @@ let showArchived = false;
 const elements = {
     undoneCount: getElement("undoneCount"),
     chooseFileButton: getElement("chooseFileButton"),
+    copyLinkButton: getElement("copyLinkButton"),
     saveFileButton: getElement("saveFileButton"),
     exportButton: getElement("exportButton"),
     importInput: getElement("importInput"),
@@ -17,6 +18,8 @@ const elements = {
     status: getElement("status"),
     taskList: getElement("taskList"),
     emptyState: getElement("emptyState"),
+    emptyTitle: getElement("emptyTitle"),
+    emptyMessage: getElement("emptyMessage"),
     taskTemplate: getElement("taskTemplate"),
     screenshotDialog: getElement("screenshotDialog"),
     dialogImage: getElement("dialogImage")
@@ -32,6 +35,9 @@ async function initialize() {
 function bindEvents() {
     elements.chooseFileButton.addEventListener("click", () => {
         void chooseSaveFile();
+    });
+    elements.copyLinkButton.addEventListener("click", () => {
+        void copyTaskListLink();
     });
     elements.firstRunChooseButton.addEventListener("click", () => {
         void chooseSaveFile();
@@ -79,10 +85,43 @@ function renderTasks() {
     elements.undoneCount.textContent =
         undoneCount === 1 ? "1 undone task" : `${undoneCount} undone tasks`;
     elements.taskList.replaceChildren();
-    elements.emptyState.hidden = visibleTasks.length > 0;
+    updateEmptyState(visibleTasks);
     visibleTasks.forEach((task, index) => {
         elements.taskList.append(renderTask(task, index, visibleTasks.length));
     });
+}
+function updateEmptyState(visibleTasks) {
+    const hasVisibleTasks = visibleTasks.length > 0;
+    elements.emptyState.hidden = hasVisibleTasks;
+    if (hasVisibleTasks) {
+        return;
+    }
+    const unarchivedTasks = tasks.filter((task) => !task.archived);
+    if (!showArchived && tasks.length > 0 && unarchivedTasks.length === 0) {
+        elements.emptyTitle.textContent = "All tasks are archived";
+        elements.emptyMessage.textContent = "Archived tasks are hidden from this view.";
+        return;
+    }
+    if (tasks.length === 0) {
+        elements.emptyTitle.textContent = "No tasks yet";
+        elements.emptyMessage.textContent =
+            "Captured pages and selections will appear here.";
+        return;
+    }
+    if (activeFilter === "todo") {
+        elements.emptyTitle.textContent = "No to-do tasks";
+        elements.emptyMessage.textContent =
+            "Open tasks that are not done will appear here.";
+        return;
+    }
+    if (activeFilter === "done") {
+        elements.emptyTitle.textContent = "No done tasks";
+        elements.emptyMessage.textContent =
+            "Completed tasks will appear here.";
+        return;
+    }
+    elements.emptyTitle.textContent = "No tasks match this view";
+    elements.emptyMessage.textContent = "Adjust the filter to see more tasks.";
 }
 function renderTask(task, index, visibleCount) {
     const item = elements.taskTemplate.content.firstElementChild?.cloneNode(true);
@@ -295,6 +334,22 @@ async function exportJsonBackup() {
     anchor.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     setStatus("Exported JSON backup.");
+}
+async function copyTaskListLink() {
+    const link = getTaskListLink();
+    try {
+        await navigator.clipboard.writeText(link);
+        setStatus("Copied WebOn task list link.");
+    }
+    catch {
+        setStatus(link);
+    }
+}
+function getTaskListLink() {
+    if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
+        return chrome.runtime.getURL("app.html");
+    }
+    return window.location.href;
 }
 async function importJsonBackup() {
     const file = elements.importInput.files?.[0];

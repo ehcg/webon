@@ -15,8 +15,9 @@
         <p class="count" id="undoneCount" aria-live="polite">0 undone</p>
       </div>
 
-      <div class="toolbar" aria-label="Backup and storage actions">
+      <div class="toolbar" aria-label="Task list and backup actions">
         <button id="chooseFileButton" type="button">Choose save file</button>
+        <button id="copyLinkButton" type="button">Copy list link</button>
         <button id="saveFileButton" type="button">Save now</button>
         <button id="exportButton" type="button">Export JSON</button>
         <label class="file-button">
@@ -63,7 +64,11 @@
       <p class="status" id="status" aria-live="polite"></p>
 
       <ul class="task-list" id="taskList"></ul>
-      <p class="empty-state" id="emptyState" hidden>No tasks match this view.</p>
+      <section class="empty-state" id="emptyState" hidden aria-live="polite">
+        <div class="empty-mark" aria-hidden="true">WebOn</div>
+        <h2 id="emptyTitle">No tasks yet</h2>
+        <p id="emptyMessage">Captured pages and selections will appear here.</p>
+      </section>
     </main>
 
     <template id="taskTemplate">

@@ -1,6 +1,7 @@
 import { createId, deleteScreenshot, getNextOrder, saveScreenshot, saveTask } from "./db.js";
 const QUICK_MENU_ID = "add-selection-to-task-list";
 const DIRECT_MENU_ID = "add-task-directly";
+const OPEN_LIST_MENU_ID = "open-webon-task-list";
 const TASK_NAME_LIMIT = 90;
 chrome.runtime.onInstalled.addListener(() => {
     // Keep WebOn available from the context menu even when no text is selected.
@@ -15,10 +16,15 @@ chrome.runtime.onInstalled.addListener(() => {
             title: "Add task directly",
             contexts: ["all"]
         });
+        chrome.contextMenus.create({
+            id: OPEN_LIST_MENU_ID,
+            title: "Open WebOn task list",
+            contexts: ["all"]
+        });
     });
 });
 chrome.action.onClicked.addListener(() => {
-    chrome.tabs.create({ url: chrome.runtime.getURL("app.html") });
+    openTaskList();
 });
 chrome.contextMenus.onClicked.addListener((info, tab) => {
     if (info.menuItemId === QUICK_MENU_ID) {
@@ -26,6 +32,9 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     }
     if (info.menuItemId === DIRECT_MENU_ID) {
         void handleDirectAdd(info, tab);
+    }
+    if (info.menuItemId === OPEN_LIST_MENU_ID) {
+        openTaskList();
     }
 });
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -42,7 +51,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         return true;
     }
     if (message?.type === "OPEN_TASK_LIST") {
-        chrome.tabs.create({ url: chrome.runtime.getURL("app.html") });
+        openTaskList();
         sendResponse({ ok: true });
         return false;
     }
@@ -64,6 +73,9 @@ async function handleQuickAdd(info, tab) {
         console.warn("Could not show quick-add task popup.", error);
         await discardDraftScreenshot(draft.screenshotId);
     }
+}
+function openTaskList() {
+    chrome.tabs.create({ url: chrome.runtime.getURL("app.html") });
 }
 async function handleDirectAdd(info, tab) {
     const selectedText = await resolveSelectedText(info, tab);

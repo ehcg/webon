@@ -10,6 +10,8 @@ import {
 } from "./db.js";
 import type { BackupData, TaskFilter, TodoTask } from "./types.js";
 
+declare const chrome: any;
+
 type SaveFileHandle = {
   queryPermission?: (options: { mode: "readwrite" }) => Promise<PermissionState>;
   requestPermission?: (
@@ -37,6 +39,7 @@ let showArchived = false;
 const elements = {
   undoneCount: getElement<HTMLElement>("undoneCount"),
   chooseFileButton: getElement<HTMLButtonElement>("chooseFileButton"),
+  copyLinkButton: getElement<HTMLButtonElement>("copyLinkButton"),
   saveFileButton: getElement<HTMLButtonElement>("saveFileButton"),
   exportButton: getElement<HTMLButtonElement>("exportButton"),
   importInput: getElement<HTMLInputElement>("importInput"),
@@ -47,6 +50,8 @@ const elements = {
   status: getElement<HTMLElement>("status"),
   taskList: getElement<HTMLUListElement>("taskList"),
   emptyState: getElement<HTMLElement>("emptyState"),
+  emptyTitle: getElement<HTMLElement>("emptyTitle"),
+  emptyMessage: getElement<HTMLElement>("emptyMessage"),
   taskTemplate: getElement<HTMLTemplateElement>("taskTemplate"),
   screenshotDialog: getElement<HTMLDialogElement>("screenshotDialog"),
   dialogImage: getElement<HTMLImageElement>("dialogImage")
@@ -65,6 +70,9 @@ async function initialize(): Promise<void> {
 function bindEvents(): void {
   elements.chooseFileButton.addEventListener("click", () => {
     void chooseSaveFile();
+  });
+  elements.copyLinkButton.addEventListener("click", () => {
+    void copyTaskListLink();
   });
   elements.firstRunChooseButton.addEventListener("click", () => {
     void chooseSaveFile();
@@ -119,11 +127,52 @@ function renderTasks(): void {
     undoneCount === 1 ? "1 undone task" : `${undoneCount} undone tasks`;
 
   elements.taskList.replaceChildren();
-  elements.emptyState.hidden = visibleTasks.length > 0;
+  updateEmptyState(visibleTasks);
 
   visibleTasks.forEach((task, index) => {
     elements.taskList.append(renderTask(task, index, visibleTasks.length));
   });
+}
+
+function updateEmptyState(visibleTasks: TodoTask[]): void {
+  const hasVisibleTasks = visibleTasks.length > 0;
+  elements.emptyState.hidden = hasVisibleTasks;
+
+  if (hasVisibleTasks) {
+    return;
+  }
+
+  const unarchivedTasks = tasks.filter((task) => !task.archived);
+
+  if (!showArchived && tasks.length > 0 && unarchivedTasks.length === 0) {
+    elements.emptyTitle.textContent = "All tasks are archived";
+    elements.emptyMessage.textContent = "Archived tasks are hidden from this view.";
+    return;
+  }
+
+  if (tasks.length === 0) {
+    elements.emptyTitle.textContent = "No tasks yet";
+    elements.emptyMessage.textContent =
+      "Captured pages and selections will appear here.";
+    return;
+  }
+
+  if (activeFilter === "todo") {
+    elements.emptyTitle.textContent = "No to-do tasks";
+    elements.emptyMessage.textContent =
+      "Open tasks that are not done will appear here.";
+    return;
+  }
+
+  if (activeFilter === "done") {
+    elements.emptyTitle.textContent = "No done tasks";
+    elements.emptyMessage.textContent =
+      "Completed tasks will appear here.";
+    return;
+  }
+
+  elements.emptyTitle.textContent = "No tasks match this view";
+  elements.emptyMessage.textContent = "Adjust the filter to see more tasks.";
 }
 
 function renderTask(
@@ -378,6 +427,24 @@ async function exportJsonBackup(): Promise<void> {
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   setStatus("Exported JSON backup.");
+}
+
+async function copyTaskListLink(): Promise<void> {
+  const link = getTaskListLink();
+
+  try {
+    await navigator.clipboard.writeText(link);
+    setStatus("Copied WebOn task list link.");
+  } catch {
+    setStatus(link);
+  }
+}
+
+function getTaskListLink(): string {
+  if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
+    return chrome.runtime.getURL("app.html");
+  }
+  return window.location.href;
 }
 
 async function importJsonBackup(): Promise<void> {
