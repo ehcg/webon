@@ -1,4 +1,4 @@
-import { exportBackup, getAllTasks, getScreenshot, getSetting, importBackup, saveTask, saveTasks, setSetting } from "./db.js";
+import { createId, exportBackup, getAllTasks, getNextOrder, getScreenshot, getSetting, importBackup, saveTask, saveTasks, setSetting } from "./db.js";
 const DEFAULT_FILE_NAME = "webon-data.json";
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 let tasks = [];
@@ -8,6 +8,7 @@ const elements = {
     undoneCount: getElement("undoneCount"),
     chooseFileButton: getElement("chooseFileButton"),
     copyLinkButton: getElement("copyLinkButton"),
+    createTestTaskButton: getElement("createTestTaskButton"),
     saveFileButton: getElement("saveFileButton"),
     exportButton: getElement("exportButton"),
     importInput: getElement("importInput"),
@@ -38,6 +39,9 @@ function bindEvents() {
     });
     elements.copyLinkButton.addEventListener("click", () => {
         void copyTaskListLink();
+    });
+    elements.createTestTaskButton.addEventListener("click", () => {
+        void createTestTask();
     });
     elements.firstRunChooseButton.addEventListener("click", () => {
         void chooseSaveFile();
@@ -344,6 +348,26 @@ async function copyTaskListLink() {
     catch {
         setStatus(link);
     }
+}
+async function createTestTask() {
+    const createdAt = new Date().toISOString();
+    await saveTask({
+        id: createId("task"),
+        name: "WebOn test task",
+        dueDate: null,
+        notes: "Created from the WebOn task page to verify local storage and list rendering.",
+        selectedText: "",
+        pageTitle: "WebOn",
+        pageUrl: getTaskListLink(),
+        createdAt,
+        screenshotId: null,
+        done: false,
+        archived: false,
+        order: await getNextOrder()
+    });
+    await refreshTasks();
+    await syncToChosenFile(false);
+    setStatus("Created a WebOn test task.");
 }
 function getTaskListLink() {
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {

@@ -14,27 +14,12 @@ const DIRECT_MENU_ID = "add-task-directly";
 const OPEN_LIST_MENU_ID = "open-webon-task-list";
 const TASK_NAME_LIMIT = 90;
 
+let contextMenuRegistration: Promise<void> = Promise.resolve();
+
+void registerContextMenus();
+
 chrome.runtime.onInstalled.addListener(() => {
-  // Keep WebOn available from the context menu even when no text is selected.
-  chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({
-      id: QUICK_MENU_ID,
-      title: "Add selection to task list",
-      contexts: ["all"]
-    });
-
-    chrome.contextMenus.create({
-      id: DIRECT_MENU_ID,
-      title: "Add task directly",
-      contexts: ["all"]
-    });
-
-    chrome.contextMenus.create({
-      id: OPEN_LIST_MENU_ID,
-      title: "Open WebOn task list",
-      contexts: ["all"]
-    });
-  });
+  void registerContextMenus();
 });
 
 chrome.action.onClicked.addListener(() => {
@@ -106,6 +91,47 @@ async function handleQuickAdd(info: any, tab: any): Promise<void> {
 
 function openTaskList(): void {
   chrome.tabs.create({ url: chrome.runtime.getURL("app.html") });
+}
+
+async function registerContextMenus(): Promise<void> {
+  contextMenuRegistration = contextMenuRegistration.then(
+    recreateContextMenus,
+    recreateContextMenus
+  );
+  return contextMenuRegistration;
+}
+
+async function recreateContextMenus(): Promise<void> {
+  try {
+    await removeAllContextMenus();
+    createMenuItem(QUICK_MENU_ID, "Add selection to task list");
+    createMenuItem(DIRECT_MENU_ID, "Add task directly");
+    createMenuItem(OPEN_LIST_MENU_ID, "Open WebOn task list");
+    console.info("WebOn context menus registered.");
+  } catch (error) {
+    console.warn("WebOn could not register context menus.", error);
+  }
+}
+
+function removeAllContextMenus(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    chrome.contextMenus.removeAll(() => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+function createMenuItem(id: string, title: string): void {
+  // Keep WebOn available from the context menu even when no text is selected.
+  chrome.contextMenus.create({
+    id,
+    title,
+    contexts: ["all"]
+  });
 }
 
 async function handleDirectAdd(info: any, tab: any): Promise<void> {

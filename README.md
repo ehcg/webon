@@ -43,6 +43,8 @@ chrome-extension://EXTENSION_ID/app.html
 
 Replace `EXTENSION_ID` with the ID shown for WebOn in `chrome://extensions`. You can also right-click any normal webpage and choose **Open WebOn task list**, or use **Copy list link** inside WebOn after it opens.
 
+If capture is not working yet, open WebOn and click **Create test task**. If that task appears, the task list and local storage are working and the issue is isolated to browser page capture/context-menu permissions.
+
 ## Use
 
 1. Right-click any normal webpage, with or without selected text.
