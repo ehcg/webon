@@ -1,0 +1,13 @@
+{
+  "name": "local-first-selection-todo-extension",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check:js": "node --check extension/background.js && node --check extension/content.js && node --check extension/app.js && node --check extension/db.js"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

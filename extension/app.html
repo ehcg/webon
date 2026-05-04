@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Local-first To-do</title>
+    <link rel="stylesheet" href="app.css" />
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Local-first</p>
+        <h1>Task List</h1>
+        <p class="count" id="undoneCount" aria-live="polite">0 undone</p>
+      </div>
+
+      <div class="toolbar" aria-label="Backup and storage actions">
+        <button id="chooseFileButton" type="button">Choose save file</button>
+        <button id="saveFileButton" type="button">Save now</button>
+        <button id="exportButton" type="button">Export JSON</button>
+        <label class="file-button">
+          Import JSON
+          <input id="importInput" type="file" accept="application/json" />
+        </label>
+      </div>
+    </header>
+
+    <main>
+      <section class="storage-panel" id="firstRunPanel" hidden>
+        <div>
+          <h2>Local storage file</h2>
+          <p>
+            Suggested backup file:
+            <strong>todo-list-data.json</strong>
+          </p>
+        </div>
+        <div class="storage-actions">
+          <button id="firstRunChooseButton" type="button">Choose location</button>
+          <button id="firstRunSkipButton" type="button">Later</button>
+        </div>
+      </section>
+
+      <section class="controls" aria-label="Task filters">
+        <div class="segmented" role="group" aria-label="Filter tasks">
+          <button class="filter-button is-active" type="button" data-filter="all">
+            All
+          </button>
+          <button class="filter-button" type="button" data-filter="todo">
+            To-do
+          </button>
+          <button class="filter-button" type="button" data-filter="done">
+            Done
+          </button>
+        </div>
+
+        <label class="archive-toggle">
+          <input id="showArchivedInput" type="checkbox" />
+          Show archived
+        </label>
+      </section>
+
+      <p class="status" id="status" aria-live="polite"></p>
+
+      <ul class="task-list" id="taskList"></ul>
+      <p class="empty-state" id="emptyState" hidden>No tasks match this view.</p>
+    </main>
+
+    <template id="taskTemplate">
+      <li class="task-card">
+        <div class="task-row">
+          <label class="done-control">
+            <input class="done-checkbox" type="checkbox" />
+            <span class="visually-hidden">Done</span>
+          </label>
+
+          <div class="task-content">
+            <div class="task-topline">
+              <h2 class="task-title"></h2>
+              <div class="task-actions">
+                <button class="move-up" type="button">Up</button>
+                <button class="move-down" type="button">Down</button>
+                <button class="archive-button" type="button">Archive</button>
+              </div>
+            </div>
+
+            <dl class="task-meta">
+              <div>
+                <dt>Due</dt>
+                <dd class="task-due"></dd>
+              </div>
+              <div>
+                <dt>Created</dt>
+                <dd class="task-created"></dd>
+              </div>
+            </dl>
+
+            <p class="task-notes"></p>
+
+            <div class="source-line">
+              <a class="source-link" target="_blank" rel="noreferrer"></a>
+            </div>
+          </div>
+
+          <button class="thumbnail-button" type="button" hidden>
+            <img class="screenshot" alt="Visible page screenshot" />
+          </button>
+        </div>
+      </li>
+    </template>
+
+    <dialog id="screenshotDialog" class="screenshot-dialog">
+      <form method="dialog">
+        <button type="submit" class="dialog-close">Close</button>
+      </form>
+      <img id="dialogImage" alt="Full screenshot" />
+    </dialog>
+  </body>
+</html>
