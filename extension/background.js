@@ -3,17 +3,17 @@ const QUICK_MENU_ID = "add-selection-to-task-list";
 const DIRECT_MENU_ID = "add-task-directly";
 const TASK_NAME_LIMIT = 90;
 chrome.runtime.onInstalled.addListener(() => {
-    // Context menu entries appear only when the user has selected page text.
+    // Keep WebOn available from the context menu even when no text is selected.
     chrome.contextMenus.removeAll(() => {
         chrome.contextMenus.create({
             id: QUICK_MENU_ID,
             title: "Add selection to task list",
-            contexts: ["selection"]
+            contexts: ["all"]
         });
         chrome.contextMenus.create({
             id: DIRECT_MENU_ID,
             title: "Add task directly",
-            contexts: ["selection"]
+            contexts: ["all"]
         });
     });
 });
@@ -49,10 +49,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return false;
 });
 async function handleQuickAdd(info, tab) {
-    const selectedText = getSelectedText(info);
-    if (!selectedText || typeof tab?.id !== "number") {
+    if (typeof tab?.id !== "number") {
         return;
     }
+    const selectedText = await resolveSelectedText(info, tab);
     const draft = await createDraft(info, tab, selectedText);
     try {
         await sendMessageToTabWithFallback(tab.id, {
@@ -66,16 +66,13 @@ async function handleQuickAdd(info, tab) {
     }
 }
 async function handleDirectAdd(info, tab) {
-    const selectedText = getSelectedText(info);
-    if (!selectedText) {
-        return;
-    }
+    const selectedText = await resolveSelectedText(info, tab);
     const draft = await createDraft(info, tab, selectedText);
     const task = await buildTask({
         ...draft,
         name: draft.defaultName,
         dueDate: null,
-        notes: selectedText
+        notes: selectedText || getFallbackNotes(draft)
     });
     await saveTask(task);
     if (typeof tab?.id === "number") {
@@ -92,15 +89,17 @@ async function handleSaveQuickTask(payload) {
 }
 async function createDraft(info, tab, selectedText) {
     const pageUrl = tab?.url || info.pageUrl || "";
+    const pageTitle = tab?.title || pageUrl || "Untitled page";
+    const taskSeedText = selectedText || pageTitle || pageUrl || "Untitled task";
     const screenshotId = await captureAndStoreScreenshot(tab, pageUrl);
     return {
         id: createId("draft"),
         selectedText,
-        pageTitle: tab?.title || pageUrl || "Untitled page",
+        pageTitle,
         pageUrl,
         createdAt: new Date().toISOString(),
         screenshotId,
-        defaultName: truncateTaskName(selectedText)
+        defaultName: truncateTaskName(taskSeedText)
     };
 }
 async function buildTask(payload) {
@@ -188,8 +187,26 @@ async function discardDraftScreenshot(screenshotId) {
         await deleteScreenshot(screenshotId);
     }
 }
-function getSelectedText(info) {
-    return (info.selectionText || "").trim();
+async function resolveSelectedText(info, tab) {
+    const menuSelection = (info.selectionText || "").trim();
+    if (menuSelection || typeof tab?.id !== "number") {
+        return menuSelection;
+    }
+    try {
+        const response = (await sendMessageToTabWithFallback(tab.id, {
+            type: "GET_SELECTED_TEXT"
+        }));
+        return (response?.text || "").trim();
+    }
+    catch {
+        return "";
+    }
+}
+function getFallbackNotes(draft) {
+    if (draft.pageUrl) {
+        return `Captured from ${draft.pageTitle}\n${draft.pageUrl}`;
+    }
+    return `Captured from ${draft.pageTitle}`;
 }
 function truncateTaskName(text) {
     const compact = text.replace(/\s+/g, " ").trim();

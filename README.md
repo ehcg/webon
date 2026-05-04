@@ -37,10 +37,10 @@ The `src/` TypeScript files are the source. The `extension/` JavaScript files ar
 
 ## Use
 
-1. Select text on any normal webpage.
-2. Right-click the selection.
-3. Choose **Add selection to task list** to edit the task before saving, or **Add task directly** to save immediately.
-4. The task captures the selected text, page title, URL, creation timestamp, and visible-page screenshot.
+1. Right-click any normal webpage, with or without selected text.
+2. Choose **Add selection to task list** to edit the task before saving, or **Add task directly** to save immediately.
+3. WebOn captures selected text when present. If nothing is selected, it starts from the page title and URL instead.
+4. The task captures the selected text when present, page title, URL, creation timestamp, and visible-page screenshot.
 
 The quick-add modal closes automatically after 30 seconds if it is not saved. When the task name is changed, the original selected text is still preserved in the notes.
 

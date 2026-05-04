@@ -34,6 +34,11 @@ if (!window.__webOnContentLoaded) {
         return false;
       }
 
+      if (message?.type === "GET_SELECTED_TEXT") {
+        sendResponse({ ok: true, text: readSelectedText() });
+        return false;
+      }
+
       return false;
     }
   );
@@ -247,7 +252,7 @@ function showQuickAdd(draft: QuickAddDraft): void {
 
   page.textContent = draft.pageTitle || draft.pageUrl || "Source page";
   taskName.value = draft.defaultName;
-  notes.value = draft.selectedText;
+  notes.value = draft.selectedText || fallbackDraftNotes(draft);
 
   let secondsLeft = QUICK_ADD_TIMEOUT_SECONDS;
   let saved = false;
@@ -387,6 +392,33 @@ function sendRuntimeMessage(message: any): Promise<any> {
       resolve(response);
     });
   });
+}
+
+function readSelectedText(): string {
+  const pageSelection = window.getSelection()?.toString().trim();
+  if (pageSelection) {
+    return pageSelection;
+  }
+
+  const activeElement = document.activeElement;
+  if (
+    activeElement instanceof HTMLTextAreaElement ||
+    (activeElement instanceof HTMLInputElement &&
+      activeElement.type !== "password")
+  ) {
+    const start = activeElement.selectionStart ?? 0;
+    const end = activeElement.selectionEnd ?? 0;
+    return activeElement.value.slice(start, end).trim();
+  }
+
+  return "";
+}
+
+function fallbackDraftNotes(draft: QuickAddDraft): string {
+  if (draft.pageUrl) {
+    return `Captured from ${draft.pageTitle}\n${draft.pageUrl}`;
+  }
+  return `Captured from ${draft.pageTitle}`;
 }
 
 function query<T extends Element>(
