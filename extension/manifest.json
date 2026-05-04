@@ -10,7 +10,8 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Open WebOn"
+    "default_title": "Open WebOn",
+    "default_popup": "popup.html"
   },
   "options_page": "app.html",
   "content_scripts": [

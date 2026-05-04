@@ -33,7 +33,8 @@ The `src/` TypeScript files are the source. The `extension/` JavaScript files ar
 3. Enable **Developer mode**.
 4. Click **Load unpacked**.
 5. Select the `extension/` folder in this project.
-6. Click the extension icon to open the task list.
+6. Pin WebOn to the toolbar.
+7. Click the WebOn icon, then choose **Open task list**.
 
 The task list URL is:
 
@@ -41,7 +42,7 @@ The task list URL is:
 chrome-extension://EXTENSION_ID/app.html
 ```
 
-Replace `EXTENSION_ID` with the ID shown for WebOn in `chrome://extensions`. You can also right-click any normal webpage and choose **Open WebOn task list**, or use **Copy list link** inside WebOn after it opens.
+Replace `EXTENSION_ID` with the ID shown for WebOn in `chrome://extensions`. You can also click the WebOn toolbar icon and use **Copy link**.
 
 If capture is not working yet, open WebOn and click **Create test task**. If that task appears, the task list and local storage are working and the issue is isolated to browser page capture/context-menu permissions.
 
