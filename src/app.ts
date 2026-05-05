@@ -25,6 +25,18 @@ type SaveFileHandle = {
   }>;
 };
 
+type ImportedTask = {
+  name: string;
+  dueDate: string | null;
+  notes: string;
+  pageTitle: string;
+  pageUrl: string;
+  createdAt: string;
+  done: boolean;
+  sourceKey: string;
+  sourceName: string;
+};
+
 declare global {
   interface Window {
     showSaveFilePicker?: (options: unknown) => Promise<SaveFileHandle>;
@@ -51,6 +63,13 @@ const elements = {
   firstRunPanel: getElement<HTMLElement>("firstRunPanel"),
   firstRunChooseButton: getElement<HTMLButtonElement>("firstRunChooseButton"),
   firstRunSkipButton: getElement<HTMLButtonElement>("firstRunSkipButton"),
+  microsoftTokenInput: getElement<HTMLInputElement>("microsoftTokenInput"),
+  importMicrosoftButton: getElement<HTMLButtonElement>("importMicrosoftButton"),
+  jiraSiteInput: getElement<HTMLInputElement>("jiraSiteInput"),
+  jiraEmailInput: getElement<HTMLInputElement>("jiraEmailInput"),
+  jiraTokenInput: getElement<HTMLInputElement>("jiraTokenInput"),
+  jiraJqlInput: getElement<HTMLTextAreaElement>("jiraJqlInput"),
+  importJiraButton: getElement<HTMLButtonElement>("importJiraButton"),
   showArchivedInput: getElement<HTMLInputElement>("showArchivedInput"),
   status: getElement<HTMLElement>("status"),
   taskList: getElement<HTMLUListElement>("taskList"),
@@ -102,6 +121,12 @@ function bindEvents(): void {
   });
   elements.firstRunSkipButton.addEventListener("click", () => {
     void markFirstRunComplete();
+  });
+  elements.importMicrosoftButton.addEventListener("click", () => {
+    void importMicrosoftTodo();
+  });
+  elements.importJiraButton.addEventListener("click", () => {
+    void importJiraTasks();
   });
   elements.saveFileButton.addEventListener("click", () => {
     void syncToChosenFile(true);
@@ -488,6 +513,318 @@ async function createTestTask(): Promise<void> {
   notifyTasksChangedFromApp();
 }
 
+async function importMicrosoftTodo(): Promise<void> {
+  const token = elements.microsoftTokenInput.value.trim();
+  if (!token) {
+    setStatus("Paste a Microsoft Graph access token first.");
+    return;
+  }
+
+  setImportBusy(elements.importMicrosoftButton, true);
+  setStatus("Importing Microsoft To Do tasks...");
+
+  try {
+    const lists = await fetchMicrosoftLists(token);
+    const importedTasks: ImportedTask[] = [];
+
+    for (const list of lists) {
+      const listTasks = await fetchMicrosoftTasks(token, list.id);
+      for (const task of listTasks) {
+        importedTasks.push(mapMicrosoftTask(list, task));
+      }
+    }
+
+    const result = await saveImportedTasks(importedTasks);
+    elements.microsoftTokenInput.value = "";
+    setStatus(formatImportResult("Microsoft To Do", result));
+  } catch (error) {
+    setStatus(getErrorMessage(error));
+  } finally {
+    setImportBusy(elements.importMicrosoftButton, false);
+  }
+}
+
+async function importJiraTasks(): Promise<void> {
+  const siteUrl = normalizeJiraSiteUrl(elements.jiraSiteInput.value);
+  const email = elements.jiraEmailInput.value.trim();
+  const token = elements.jiraTokenInput.value.trim();
+  const jql = elements.jiraJqlInput.value.trim();
+
+  if (!siteUrl || !email || !token || !jql) {
+    setStatus("Fill in Jira site URL, email, API token, and JQL.");
+    return;
+  }
+
+  setImportBusy(elements.importJiraButton, true);
+  setStatus("Importing Jira tasks...");
+
+  try {
+    const issues = await fetchJiraIssues(siteUrl, email, token, jql);
+    const result = await saveImportedTasks(
+      issues.map((issue) => mapJiraIssue(siteUrl, issue))
+    );
+    elements.jiraTokenInput.value = "";
+    setStatus(formatImportResult("Jira", result));
+  } catch (error) {
+    setStatus(getErrorMessage(error));
+  } finally {
+    setImportBusy(elements.importJiraButton, false);
+  }
+}
+
+async function fetchMicrosoftLists(token: string): Promise<any[]> {
+  const data = await fetchJsonWithBearer(
+    "https://graph.microsoft.com/v1.0/me/todo/lists",
+    token
+  );
+  return Array.isArray(data.value) ? data.value : [];
+}
+
+async function fetchMicrosoftTasks(
+  token: string,
+  listId: string
+): Promise<any[]> {
+  const tasks: any[] = [];
+  let nextUrl:
+    | string
+    | null = `https://graph.microsoft.com/v1.0/me/todo/lists/${encodeURIComponent(
+    listId
+  )}/tasks?$top=100`;
+
+  while (nextUrl) {
+    const data = await fetchJsonWithBearer(nextUrl, token);
+    tasks.push(...(Array.isArray(data.value) ? data.value : []));
+    nextUrl = typeof data["@odata.nextLink"] === "string"
+      ? data["@odata.nextLink"]
+      : null;
+  }
+
+  return tasks;
+}
+
+async function fetchJsonWithBearer(url: string, token: string): Promise<any> {
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json"
+    }
+  });
+  return readJsonResponse(response);
+}
+
+function mapMicrosoftTask(list: any, task: any): ImportedTask {
+  const listName = list.displayName || "Tasks";
+  const body = stripHtml(task.body?.content || "");
+  const notes = joinLines([`List: ${listName}`, body]);
+
+  return {
+    name: task.title || "Untitled Microsoft To Do task",
+    dueDate: parseDateOnly(task.dueDateTime?.dateTime),
+    notes,
+    pageTitle: `Microsoft To Do - ${listName}`,
+    pageUrl: "",
+    createdAt: normalizeDateTime(task.createdDateTime),
+    done: task.status === "completed",
+    sourceKey: `microsoft-todo:${list.id}:${task.id}`,
+    sourceName: "Microsoft To Do"
+  };
+}
+
+async function fetchJiraIssues(
+  siteUrl: string,
+  email: string,
+  token: string,
+  jql: string
+): Promise<any[]> {
+  const issues: any[] = [];
+  let nextPageToken: string | null = null;
+  const auth = btoa(`${email}:${token}`);
+
+  do {
+    const url = new URL(`${siteUrl}/rest/api/3/search/jql`);
+    url.searchParams.set("jql", jql);
+    url.searchParams.set("maxResults", "100");
+    url.searchParams.set("fields", "summary,status,duedate,description,assignee,priority");
+    if (nextPageToken) {
+      url.searchParams.set("nextPageToken", nextPageToken);
+    }
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        Authorization: `Basic ${auth}`,
+        Accept: "application/json"
+      }
+    });
+    const data = await readJsonResponse(response);
+    issues.push(...(Array.isArray(data.issues) ? data.issues : []));
+    nextPageToken = typeof data.nextPageToken === "string"
+      ? data.nextPageToken
+      : null;
+  } while (nextPageToken);
+
+  return issues;
+}
+
+function mapJiraIssue(siteUrl: string, issue: any): ImportedTask {
+  const fields = issue.fields || {};
+  const issueUrl = `${siteUrl}/browse/${issue.key}`;
+  const status = fields.status?.name ? `Status: ${fields.status.name}` : "";
+  const priority = fields.priority?.name ? `Priority: ${fields.priority.name}` : "";
+  const assignee = fields.assignee?.displayName
+    ? `Assignee: ${fields.assignee.displayName}`
+    : "";
+  const description = extractAdfText(fields.description);
+
+  return {
+    name: `${issue.key}: ${fields.summary || "Untitled Jira issue"}`,
+    dueDate: fields.duedate || null,
+    notes: joinLines([status, priority, assignee, description]),
+    pageTitle: "Jira",
+    pageUrl: issueUrl,
+    createdAt: new Date().toISOString(),
+    done: fields.status?.statusCategory?.key === "done",
+    sourceKey: `jira:${siteUrl}:${issue.key}`,
+    sourceName: "Jira"
+  };
+}
+
+async function saveImportedTasks(
+  importedTasks: ImportedTask[]
+): Promise<{ imported: number; skipped: number }> {
+  const existingTasks = await getAllTasks();
+  const existingSourceKeys = new Set(
+    existingTasks
+      .map((task) => task.sourceKey)
+      .filter((sourceKey): sourceKey is string => Boolean(sourceKey))
+  );
+
+  let order = await getNextOrder();
+  let imported = 0;
+  let skipped = 0;
+
+  for (const importedTask of importedTasks) {
+    if (existingSourceKeys.has(importedTask.sourceKey)) {
+      skipped += 1;
+      continue;
+    }
+
+    await saveTask({
+      id: createId("task"),
+      name: importedTask.name,
+      dueDate: importedTask.dueDate,
+      notes: importedTask.notes,
+      selectedText: "",
+      pageTitle: importedTask.pageTitle,
+      pageUrl: importedTask.pageUrl,
+      createdAt: importedTask.createdAt,
+      screenshotId: null,
+      done: importedTask.done,
+      archived: false,
+      order,
+      sourceKey: importedTask.sourceKey,
+      sourceName: importedTask.sourceName
+    });
+
+    existingSourceKeys.add(importedTask.sourceKey);
+    order += 1;
+    imported += 1;
+  }
+
+  await refreshTasks();
+  await syncToChosenFile(false);
+  notifyTasksChangedFromApp();
+
+  return { imported, skipped };
+}
+
+async function readJsonResponse(response: Response): Promise<any> {
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : {};
+
+  if (!response.ok) {
+    const message =
+      data.error?.message ||
+      data.errorMessages?.join(" ") ||
+      data.message ||
+      response.statusText;
+    throw new Error(`${response.status}: ${message}`);
+  }
+
+  return data;
+}
+
+function normalizeJiraSiteUrl(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!trimmed) {
+    return "";
+  }
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+function parseDateOnly(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const match = value.match(/^\d{4}-\d{2}-\d{2}/);
+  return match ? match[0] : null;
+}
+
+function normalizeDateTime(value: unknown): string {
+  if (typeof value !== "string") {
+    return new Date().toISOString();
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+}
+
+function extractAdfText(value: unknown): string {
+  const pieces: string[] = [];
+
+  const visit = (node: any) => {
+    if (!node) {
+      return;
+    }
+    if (typeof node === "string") {
+      pieces.push(node);
+      return;
+    }
+    if (typeof node.text === "string") {
+      pieces.push(node.text);
+    }
+    if (Array.isArray(node.content)) {
+      for (const child of node.content) {
+        visit(child);
+      }
+    }
+  };
+
+  visit(value);
+  return pieces.join(" ").replace(/\s+/g, " ").trim();
+}
+
+function stripHtml(value: string): string {
+  const document = new DOMParser().parseFromString(value, "text/html");
+  return document.body.textContent?.replace(/\s+/g, " ").trim() || "";
+}
+
+function joinLines(lines: string[]): string {
+  return lines
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+function formatImportResult(
+  source: string,
+  result: { imported: number; skipped: number }
+): string {
+  return `${source}: imported ${result.imported}, skipped ${result.skipped}.`;
+}
+
+function setImportBusy(button: HTMLButtonElement, busy: boolean): void {
+  button.disabled = busy;
+}
+
 function getTaskListLink(): string {
   if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
     return chrome.runtime.getURL("app.html");
@@ -518,7 +855,6 @@ async function importJsonBackup(): Promise<void> {
 async function refreshFromExternalChange(): Promise<void> {
   await refreshTasks();
   await syncToChosenFile(false);
-  setStatus("Task list updated.");
 }
 
 function notifyTasksChangedFromApp(): void {

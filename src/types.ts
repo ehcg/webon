@@ -11,6 +11,8 @@ export interface TodoTask {
   done: boolean;
   archived: boolean;
   order: number;
+  sourceKey?: string;
+  sourceName?: string;
 }
 
 export interface ScreenshotRecord {

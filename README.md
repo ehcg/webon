@@ -64,6 +64,18 @@ The quick-add modal closes automatically after 30 seconds if it is not saved. Wh
 - **Import JSON** restores tasks and screenshot records from a backup.
 - No cloud service, server, or login is required.
 
+## External Imports
+
+WebOn can import read-only local copies from:
+
+- Microsoft To Do via Microsoft Graph `Tasks.Read`.
+- Jira Cloud via a JQL search and Atlassian API token.
+
+These imports are one-time pulls. WebOn does not sync, update, or write back to external systems.
+
+For Microsoft To Do, paste a Microsoft Graph access token with `Tasks.Read`.
+For Jira Cloud, enter your `https://*.atlassian.net` site, email, API token, and JQL query.
+
 ## Development
 
 Install TypeScript if you want to rebuild the JavaScript from `src/`:

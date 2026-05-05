@@ -43,6 +43,68 @@
         </div>
       </section>
 
+      <section class="integration-panel" aria-label="External task imports">
+        <div class="integration-heading">
+          <div>
+            <h2>Import tasks</h2>
+            <p>Bring in read-only copies from Microsoft To Do or Jira.</p>
+          </div>
+        </div>
+
+        <div class="integration-grid">
+          <details>
+            <summary>Microsoft To Do</summary>
+            <div class="integration-form">
+              <label>
+                Graph access token
+                <input
+                  id="microsoftTokenInput"
+                  type="password"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </label>
+              <button id="importMicrosoftButton" type="button">
+                Import Microsoft To Do
+              </button>
+            </div>
+          </details>
+
+          <details>
+            <summary>Jira Cloud</summary>
+            <div class="integration-form">
+              <label>
+                Site URL
+                <input
+                  id="jiraSiteInput"
+                  type="url"
+                  placeholder="https://example.atlassian.net"
+                  autocomplete="url"
+                />
+              </label>
+              <label>
+                Email
+                <input id="jiraEmailInput" type="email" autocomplete="username" />
+              </label>
+              <label>
+                API token
+                <input
+                  id="jiraTokenInput"
+                  type="password"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </label>
+              <label>
+                JQL
+                <textarea id="jiraJqlInput" spellcheck="false">assignee = currentUser() AND resolution = Unresolved ORDER BY updated DESC</textarea>
+              </label>
+              <button id="importJiraButton" type="button">Import Jira</button>
+            </div>
+          </details>
+        </div>
+      </section>
+
       <section class="controls" aria-label="Task filters">
         <div class="segmented" role="group" aria-label="Filter tasks">
           <button class="filter-button is-active" type="button" data-filter="all">
