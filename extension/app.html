@@ -96,8 +96,8 @@
                 />
               </label>
               <label>
-                JQL
-                <textarea id="jiraJqlInput" spellcheck="false">assignee = currentUser() AND resolution = Unresolved ORDER BY updated DESC</textarea>
+                Notification-like JQL
+                <textarea id="jiraJqlInput" spellcheck="false">(assignee = currentUser() OR reporter = currentUser() OR creator = currentUser() OR watcher = currentUser() OR voter = currentUser()) AND resolution = Unresolved ORDER BY updated DESC</textarea>
               </label>
               <button id="importJiraButton" type="button">Import Jira</button>
             </div>

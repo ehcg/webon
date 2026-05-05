@@ -74,7 +74,7 @@ WebOn can import read-only local copies from:
 These imports are one-time pulls. WebOn does not sync, update, or write back to external systems.
 
 For Microsoft To Do, paste a Microsoft Graph access token with `Tasks.Read`.
-For Jira Cloud, enter your `https://*.atlassian.net` site, email, API token, and JQL query.
+Jira Cloud does not expose a public REST endpoint for a user's exact notification inbox. WebOn uses a notification-like JQL preset instead: assigned to you, reported or created by you, watched by you, or voted by you, with unresolved issues ordered by latest update. You can edit the JQL before importing.
 
 ## Development
 
