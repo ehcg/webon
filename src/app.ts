@@ -37,6 +37,20 @@ type ImportedTask = {
   sourceName: string;
 };
 
+type JiraImportSettings = {
+  siteUrl: string;
+  email: string;
+  token: string;
+  jql: string;
+  savedAt: string;
+};
+
+type ImportResult = {
+  imported: number;
+  updated: number;
+  skipped: number;
+};
+
 declare global {
   interface Window {
     showSaveFilePicker?: (options: unknown) => Promise<SaveFileHandle>;
@@ -44,6 +58,9 @@ declare global {
 }
 
 const DEFAULT_FILE_NAME = "webon-data.json";
+const DEFAULT_JIRA_JQL =
+  "(assignee = currentUser() OR reporter = currentUser() OR creator = currentUser() OR watcher = currentUser() OR voter = currentUser()) AND resolution = Unresolved ORDER BY updated DESC";
+const JIRA_IMPORT_SETTINGS_KEY = "jiraImportSettings";
 const TASKS_CHANGED_MESSAGE = "TASKS_CHANGED";
 const TASKS_CHANGED_FROM_APP_MESSAGE = "TASKS_CHANGED_FROM_APP";
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -51,6 +68,7 @@ const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 let tasks: TodoTask[] = [];
 let activeFilter: TaskFilter = "all";
 let showArchived = false;
+let savedJiraSettings: JiraImportSettings | null = null;
 
 const elements = {
   undoneCount: getElement<HTMLElement>("undoneCount"),
@@ -70,6 +88,8 @@ const elements = {
   jiraTokenInput: getElement<HTMLInputElement>("jiraTokenInput"),
   jiraJqlInput: getElement<HTMLTextAreaElement>("jiraJqlInput"),
   importJiraButton: getElement<HTMLButtonElement>("importJiraButton"),
+  refreshJiraButton: getElement<HTMLButtonElement>("refreshJiraButton"),
+  jiraSavedStatus: getElement<HTMLElement>("jiraSavedStatus"),
   showArchivedInput: getElement<HTMLInputElement>("showArchivedInput"),
   status: getElement<HTMLElement>("status"),
   taskList: getElement<HTMLUListElement>("taskList"),
@@ -89,6 +109,7 @@ async function initialize(): Promise<void> {
   bindRuntimeEvents();
   bindEvents();
   await showFirstRunPanelIfNeeded();
+  await loadJiraImportSettings();
   await refreshTasks();
 }
 
@@ -128,6 +149,9 @@ function bindEvents(): void {
   elements.importJiraButton.addEventListener("click", () => {
     void importJiraTasks();
   });
+  elements.refreshJiraButton.addEventListener("click", () => {
+    void refreshJiraTasks();
+  });
   elements.saveFileButton.addEventListener("click", () => {
     void syncToChosenFile(true);
   });
@@ -153,6 +177,21 @@ function bindEvents(): void {
 async function showFirstRunPanelIfNeeded(): Promise<void> {
   const setupSeen = await getSetting<boolean>("fileSetupSeen");
   elements.firstRunPanel.hidden = Boolean(setupSeen);
+}
+
+async function loadJiraImportSettings(): Promise<void> {
+  const settings = await getSetting<JiraImportSettings>(JIRA_IMPORT_SETTINGS_KEY);
+
+  if (isJiraImportSettings(settings)) {
+    savedJiraSettings = settings;
+    elements.jiraSiteInput.value = settings.siteUrl;
+    elements.jiraEmailInput.value = settings.email;
+    elements.jiraJqlInput.value = settings.jql;
+  } else if (!elements.jiraJqlInput.value.trim()) {
+    elements.jiraJqlInput.value = DEFAULT_JIRA_JQL;
+  }
+
+  updateJiraSavedStatus();
 }
 
 async function markFirstRunComplete(): Promise<void> {
@@ -545,31 +584,125 @@ async function importMicrosoftTodo(): Promise<void> {
 }
 
 async function importJiraTasks(): Promise<void> {
-  const siteUrl = normalizeJiraSiteUrl(elements.jiraSiteInput.value);
-  const email = elements.jiraEmailInput.value.trim();
-  const token = elements.jiraTokenInput.value.trim();
-  const jql = elements.jiraJqlInput.value.trim();
+  const settings = collectJiraSettingsFromForm();
 
-  if (!siteUrl || !email || !token || !jql) {
+  if (!settings) {
     setStatus("Fill in Jira site URL, email, API token, and JQL.");
     return;
   }
 
-  setImportBusy(elements.importJiraButton, true);
+  setJiraBusy(true);
   setStatus("Importing Jira tasks...");
 
   try {
-    const issues = await fetchJiraIssues(siteUrl, email, token, jql);
-    const result = await saveImportedTasks(
-      issues.map((issue) => mapJiraIssue(siteUrl, issue))
+    const issues = await fetchJiraIssues(
+      settings.siteUrl,
+      settings.email,
+      settings.token,
+      settings.jql
     );
+    const result = await saveImportedTasks(
+      issues.map((issue) => mapJiraIssue(settings.siteUrl, issue))
+    );
+    await saveJiraImportSettings(settings);
     elements.jiraTokenInput.value = "";
-    setStatus(formatImportResult("Jira", result));
+    setStatus(`${formatImportResult("Jira", result)} Saved Jira settings locally.`);
   } catch (error) {
     setStatus(getErrorMessage(error));
   } finally {
-    setImportBusy(elements.importJiraButton, false);
+    setJiraBusy(false);
   }
+}
+
+async function refreshJiraTasks(): Promise<void> {
+  const settings = savedJiraSettings;
+  if (!settings) {
+    setStatus("Save Jira settings with Import Jira first.");
+    return;
+  }
+
+  setJiraBusy(true);
+  setStatus("Refreshing Jira tasks...");
+
+  try {
+    const issues = await fetchJiraIssues(
+      settings.siteUrl,
+      settings.email,
+      settings.token,
+      settings.jql
+    );
+    const result = await saveImportedTasks(
+      issues.map((issue) => mapJiraIssue(settings.siteUrl, issue))
+    );
+    await saveJiraImportSettings({
+      ...settings,
+      savedAt: new Date().toISOString()
+    });
+    setStatus(formatImportResult("Jira refresh", result));
+  } catch (error) {
+    setStatus(getErrorMessage(error));
+  } finally {
+    setJiraBusy(false);
+  }
+}
+
+function collectJiraSettingsFromForm(): JiraImportSettings | null {
+  const siteUrl = normalizeJiraSiteUrl(elements.jiraSiteInput.value);
+  const email = elements.jiraEmailInput.value.trim();
+  const token = elements.jiraTokenInput.value.trim() || savedJiraSettings?.token || "";
+  const jql = elements.jiraJqlInput.value.trim();
+
+  if (!siteUrl || !email || !token || !jql) {
+    return null;
+  }
+
+  return {
+    siteUrl,
+    email,
+    token,
+    jql,
+    savedAt: new Date().toISOString()
+  };
+}
+
+async function saveJiraImportSettings(
+  settings: JiraImportSettings
+): Promise<void> {
+  await setSetting(JIRA_IMPORT_SETTINGS_KEY, settings);
+  savedJiraSettings = settings;
+  elements.jiraSiteInput.value = settings.siteUrl;
+  elements.jiraEmailInput.value = settings.email;
+  elements.jiraJqlInput.value = settings.jql;
+  updateJiraSavedStatus();
+}
+
+function updateJiraSavedStatus(): void {
+  const hasSavedSettings = Boolean(savedJiraSettings);
+  elements.refreshJiraButton.disabled = !hasSavedSettings;
+  elements.jiraTokenInput.placeholder = hasSavedSettings
+    ? "Saved locally; leave blank to reuse"
+    : "";
+
+  elements.jiraSavedStatus.textContent = savedJiraSettings
+    ? `Saved locally for ${savedJiraSettings.siteUrl} on ${formatDateTime(
+        savedJiraSettings.savedAt
+      )}.`
+    : "No saved Jira settings.";
+}
+
+function isJiraImportSettings(value: unknown): value is JiraImportSettings {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const settings = value as Partial<JiraImportSettings>;
+  return Boolean(
+    settings.siteUrl &&
+      settings.email &&
+      settings.token &&
+      settings.jql &&
+      settings.savedAt
+  );
 }
 
 async function fetchMicrosoftLists(token: string): Promise<any[]> {
@@ -690,25 +823,44 @@ function mapJiraIssue(siteUrl: string, issue: any): ImportedTask {
 
 async function saveImportedTasks(
   importedTasks: ImportedTask[]
-): Promise<{ imported: number; skipped: number }> {
+): Promise<ImportResult> {
   const existingTasks = await getAllTasks();
-  const existingSourceKeys = new Set(
+  const existingTasksBySourceKey = new Map(
     existingTasks
-      .map((task) => task.sourceKey)
-      .filter((sourceKey): sourceKey is string => Boolean(sourceKey))
+      .filter((task) => Boolean(task.sourceKey))
+      .map((task) => [task.sourceKey as string, task])
   );
 
   let order = await getNextOrder();
   let imported = 0;
+  let updated = 0;
   let skipped = 0;
 
   for (const importedTask of importedTasks) {
-    if (existingSourceKeys.has(importedTask.sourceKey)) {
-      skipped += 1;
+    const existingTask = existingTasksBySourceKey.get(importedTask.sourceKey);
+
+    if (existingTask) {
+      const refreshedTask = {
+        ...existingTask,
+        name: importedTask.name,
+        dueDate: importedTask.dueDate,
+        notes: importedTask.notes,
+        pageTitle: importedTask.pageTitle,
+        pageUrl: importedTask.pageUrl,
+        done: existingTask.done || importedTask.done,
+        sourceName: importedTask.sourceName
+      };
+
+      if (hasTaskChanges(existingTask, refreshedTask)) {
+        await saveTask(refreshedTask);
+        updated += 1;
+      } else {
+        skipped += 1;
+      }
       continue;
     }
 
-    await saveTask({
+    const newTask: TodoTask = {
       id: createId("task"),
       name: importedTask.name,
       dueDate: importedTask.dueDate,
@@ -723,9 +875,10 @@ async function saveImportedTasks(
       order,
       sourceKey: importedTask.sourceKey,
       sourceName: importedTask.sourceName
-    });
+    };
 
-    existingSourceKeys.add(importedTask.sourceKey);
+    await saveTask(newTask);
+    existingTasksBySourceKey.set(importedTask.sourceKey, newTask);
     order += 1;
     imported += 1;
   }
@@ -734,7 +887,19 @@ async function saveImportedTasks(
   await syncToChosenFile(false);
   notifyTasksChangedFromApp();
 
-  return { imported, skipped };
+  return { imported, updated, skipped };
+}
+
+function hasTaskChanges(task: TodoTask, nextTask: TodoTask): boolean {
+  return (
+    task.name !== nextTask.name ||
+    task.dueDate !== nextTask.dueDate ||
+    task.notes !== nextTask.notes ||
+    task.pageTitle !== nextTask.pageTitle ||
+    task.pageUrl !== nextTask.pageUrl ||
+    task.done !== nextTask.done ||
+    task.sourceName !== nextTask.sourceName
+  );
 }
 
 async function readJsonResponse(response: Response): Promise<any> {
@@ -814,15 +979,17 @@ function joinLines(lines: string[]): string {
     .join("\n");
 }
 
-function formatImportResult(
-  source: string,
-  result: { imported: number; skipped: number }
-): string {
-  return `${source}: imported ${result.imported}, skipped ${result.skipped}.`;
+function formatImportResult(source: string, result: ImportResult): string {
+  return `${source}: imported ${result.imported}, updated ${result.updated}, skipped ${result.skipped}.`;
 }
 
 function setImportBusy(button: HTMLButtonElement, busy: boolean): void {
   button.disabled = busy;
+}
+
+function setJiraBusy(busy: boolean): void {
+  elements.importJiraButton.disabled = busy;
+  elements.refreshJiraButton.disabled = busy || !savedJiraSettings;
 }
 
 function getTaskListLink(): string {

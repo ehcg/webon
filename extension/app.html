@@ -99,7 +99,15 @@
                 Notification-like JQL
                 <textarea id="jiraJqlInput" spellcheck="false">(assignee = currentUser() OR reporter = currentUser() OR creator = currentUser() OR watcher = currentUser() OR voter = currentUser()) AND resolution = Unresolved ORDER BY updated DESC</textarea>
               </label>
-              <button id="importJiraButton" type="button">Import Jira</button>
+              <p id="jiraSavedStatus" class="integration-note">
+                No saved Jira settings.
+              </p>
+              <div class="integration-actions">
+                <button id="importJiraButton" type="button">Save and import Jira</button>
+                <button id="refreshJiraButton" type="button" disabled>
+                  Refresh Jira
+                </button>
+              </div>
             </div>
           </details>
         </div>

@@ -1,11 +1,14 @@
 import { createId, exportBackup, getAllTasks, getNextOrder, getScreenshot, getSetting, importBackup, saveTask, saveTasks, setSetting } from "./db.js";
 const DEFAULT_FILE_NAME = "webon-data.json";
+const DEFAULT_JIRA_JQL = "(assignee = currentUser() OR reporter = currentUser() OR creator = currentUser() OR watcher = currentUser() OR voter = currentUser()) AND resolution = Unresolved ORDER BY updated DESC";
+const JIRA_IMPORT_SETTINGS_KEY = "jiraImportSettings";
 const TASKS_CHANGED_MESSAGE = "TASKS_CHANGED";
 const TASKS_CHANGED_FROM_APP_MESSAGE = "TASKS_CHANGED_FROM_APP";
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 let tasks = [];
 let activeFilter = "all";
 let showArchived = false;
+let savedJiraSettings = null;
 const elements = {
     undoneCount: getElement("undoneCount"),
     chooseFileButton: getElement("chooseFileButton"),
@@ -24,6 +27,8 @@ const elements = {
     jiraTokenInput: getElement("jiraTokenInput"),
     jiraJqlInput: getElement("jiraJqlInput"),
     importJiraButton: getElement("importJiraButton"),
+    refreshJiraButton: getElement("refreshJiraButton"),
+    jiraSavedStatus: getElement("jiraSavedStatus"),
     showArchivedInput: getElement("showArchivedInput"),
     status: getElement("status"),
     taskList: getElement("taskList"),
@@ -41,6 +46,7 @@ async function initialize() {
     bindRuntimeEvents();
     bindEvents();
     await showFirstRunPanelIfNeeded();
+    await loadJiraImportSettings();
     await refreshTasks();
 }
 function bindRuntimeEvents() {
@@ -77,6 +83,9 @@ function bindEvents() {
     elements.importJiraButton.addEventListener("click", () => {
         void importJiraTasks();
     });
+    elements.refreshJiraButton.addEventListener("click", () => {
+        void refreshJiraTasks();
+    });
     elements.saveFileButton.addEventListener("click", () => {
         void syncToChosenFile(true);
     });
@@ -100,6 +109,19 @@ function bindEvents() {
 async function showFirstRunPanelIfNeeded() {
     const setupSeen = await getSetting("fileSetupSeen");
     elements.firstRunPanel.hidden = Boolean(setupSeen);
+}
+async function loadJiraImportSettings() {
+    const settings = await getSetting(JIRA_IMPORT_SETTINGS_KEY);
+    if (isJiraImportSettings(settings)) {
+        savedJiraSettings = settings;
+        elements.jiraSiteInput.value = settings.siteUrl;
+        elements.jiraEmailInput.value = settings.email;
+        elements.jiraJqlInput.value = settings.jql;
+    }
+    else if (!elements.jiraJqlInput.value.trim()) {
+        elements.jiraJqlInput.value = DEFAULT_JIRA_JQL;
+    }
+    updateJiraSavedStatus();
 }
 async function markFirstRunComplete() {
     await setSetting("fileSetupSeen", true);
@@ -429,28 +451,95 @@ async function importMicrosoftTodo() {
     }
 }
 async function importJiraTasks() {
-    const siteUrl = normalizeJiraSiteUrl(elements.jiraSiteInput.value);
-    const email = elements.jiraEmailInput.value.trim();
-    const token = elements.jiraTokenInput.value.trim();
-    const jql = elements.jiraJqlInput.value.trim();
-    if (!siteUrl || !email || !token || !jql) {
+    const settings = collectJiraSettingsFromForm();
+    if (!settings) {
         setStatus("Fill in Jira site URL, email, API token, and JQL.");
         return;
     }
-    setImportBusy(elements.importJiraButton, true);
+    setJiraBusy(true);
     setStatus("Importing Jira tasks...");
     try {
-        const issues = await fetchJiraIssues(siteUrl, email, token, jql);
-        const result = await saveImportedTasks(issues.map((issue) => mapJiraIssue(siteUrl, issue)));
+        const issues = await fetchJiraIssues(settings.siteUrl, settings.email, settings.token, settings.jql);
+        const result = await saveImportedTasks(issues.map((issue) => mapJiraIssue(settings.siteUrl, issue)));
+        await saveJiraImportSettings(settings);
         elements.jiraTokenInput.value = "";
-        setStatus(formatImportResult("Jira", result));
+        setStatus(`${formatImportResult("Jira", result)} Saved Jira settings locally.`);
     }
     catch (error) {
         setStatus(getErrorMessage(error));
     }
     finally {
-        setImportBusy(elements.importJiraButton, false);
+        setJiraBusy(false);
     }
+}
+async function refreshJiraTasks() {
+    const settings = savedJiraSettings;
+    if (!settings) {
+        setStatus("Save Jira settings with Import Jira first.");
+        return;
+    }
+    setJiraBusy(true);
+    setStatus("Refreshing Jira tasks...");
+    try {
+        const issues = await fetchJiraIssues(settings.siteUrl, settings.email, settings.token, settings.jql);
+        const result = await saveImportedTasks(issues.map((issue) => mapJiraIssue(settings.siteUrl, issue)));
+        await saveJiraImportSettings({
+            ...settings,
+            savedAt: new Date().toISOString()
+        });
+        setStatus(formatImportResult("Jira refresh", result));
+    }
+    catch (error) {
+        setStatus(getErrorMessage(error));
+    }
+    finally {
+        setJiraBusy(false);
+    }
+}
+function collectJiraSettingsFromForm() {
+    const siteUrl = normalizeJiraSiteUrl(elements.jiraSiteInput.value);
+    const email = elements.jiraEmailInput.value.trim();
+    const token = elements.jiraTokenInput.value.trim() || savedJiraSettings?.token || "";
+    const jql = elements.jiraJqlInput.value.trim();
+    if (!siteUrl || !email || !token || !jql) {
+        return null;
+    }
+    return {
+        siteUrl,
+        email,
+        token,
+        jql,
+        savedAt: new Date().toISOString()
+    };
+}
+async function saveJiraImportSettings(settings) {
+    await setSetting(JIRA_IMPORT_SETTINGS_KEY, settings);
+    savedJiraSettings = settings;
+    elements.jiraSiteInput.value = settings.siteUrl;
+    elements.jiraEmailInput.value = settings.email;
+    elements.jiraJqlInput.value = settings.jql;
+    updateJiraSavedStatus();
+}
+function updateJiraSavedStatus() {
+    const hasSavedSettings = Boolean(savedJiraSettings);
+    elements.refreshJiraButton.disabled = !hasSavedSettings;
+    elements.jiraTokenInput.placeholder = hasSavedSettings
+        ? "Saved locally; leave blank to reuse"
+        : "";
+    elements.jiraSavedStatus.textContent = savedJiraSettings
+        ? `Saved locally for ${savedJiraSettings.siteUrl} on ${formatDateTime(savedJiraSettings.savedAt)}.`
+        : "No saved Jira settings.";
+}
+function isJiraImportSettings(value) {
+    if (!value || typeof value !== "object") {
+        return false;
+    }
+    const settings = value;
+    return Boolean(settings.siteUrl &&
+        settings.email &&
+        settings.token &&
+        settings.jql &&
+        settings.savedAt);
 }
 async function fetchMicrosoftLists(token) {
     const data = await fetchJsonWithBearer("https://graph.microsoft.com/v1.0/me/todo/lists", token);
@@ -542,18 +631,36 @@ function mapJiraIssue(siteUrl, issue) {
 }
 async function saveImportedTasks(importedTasks) {
     const existingTasks = await getAllTasks();
-    const existingSourceKeys = new Set(existingTasks
-        .map((task) => task.sourceKey)
-        .filter((sourceKey) => Boolean(sourceKey)));
+    const existingTasksBySourceKey = new Map(existingTasks
+        .filter((task) => Boolean(task.sourceKey))
+        .map((task) => [task.sourceKey, task]));
     let order = await getNextOrder();
     let imported = 0;
+    let updated = 0;
     let skipped = 0;
     for (const importedTask of importedTasks) {
-        if (existingSourceKeys.has(importedTask.sourceKey)) {
-            skipped += 1;
+        const existingTask = existingTasksBySourceKey.get(importedTask.sourceKey);
+        if (existingTask) {
+            const refreshedTask = {
+                ...existingTask,
+                name: importedTask.name,
+                dueDate: importedTask.dueDate,
+                notes: importedTask.notes,
+                pageTitle: importedTask.pageTitle,
+                pageUrl: importedTask.pageUrl,
+                done: existingTask.done || importedTask.done,
+                sourceName: importedTask.sourceName
+            };
+            if (hasTaskChanges(existingTask, refreshedTask)) {
+                await saveTask(refreshedTask);
+                updated += 1;
+            }
+            else {
+                skipped += 1;
+            }
             continue;
         }
-        await saveTask({
+        const newTask = {
             id: createId("task"),
             name: importedTask.name,
             dueDate: importedTask.dueDate,
@@ -568,15 +675,25 @@ async function saveImportedTasks(importedTasks) {
             order,
             sourceKey: importedTask.sourceKey,
             sourceName: importedTask.sourceName
-        });
-        existingSourceKeys.add(importedTask.sourceKey);
+        };
+        await saveTask(newTask);
+        existingTasksBySourceKey.set(importedTask.sourceKey, newTask);
         order += 1;
         imported += 1;
     }
     await refreshTasks();
     await syncToChosenFile(false);
     notifyTasksChangedFromApp();
-    return { imported, skipped };
+    return { imported, updated, skipped };
+}
+function hasTaskChanges(task, nextTask) {
+    return (task.name !== nextTask.name ||
+        task.dueDate !== nextTask.dueDate ||
+        task.notes !== nextTask.notes ||
+        task.pageTitle !== nextTask.pageTitle ||
+        task.pageUrl !== nextTask.pageUrl ||
+        task.done !== nextTask.done ||
+        task.sourceName !== nextTask.sourceName);
 }
 async function readJsonResponse(response) {
     const text = await response.text();
@@ -644,10 +761,14 @@ function joinLines(lines) {
         .join("\n");
 }
 function formatImportResult(source, result) {
-    return `${source}: imported ${result.imported}, skipped ${result.skipped}.`;
+    return `${source}: imported ${result.imported}, updated ${result.updated}, skipped ${result.skipped}.`;
 }
 function setImportBusy(button, busy) {
     button.disabled = busy;
+}
+function setJiraBusy(busy) {
+    elements.importJiraButton.disabled = busy;
+    elements.refreshJiraButton.disabled = busy || !savedJiraSettings;
 }
 function getTaskListLink() {
     if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
