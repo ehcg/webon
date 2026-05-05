@@ -1,13 +1,20 @@
 import { createId, exportBackup, getAllTasks, getNextOrder, getScreenshot, getSetting, importBackup, saveTask, saveTasks, setSetting } from "./db.js";
 const DEFAULT_FILE_NAME = "webon-data.json";
+const DEFAULT_SORT_SETTINGS = {
+    field: "manual",
+    direction: "asc"
+};
 const DEFAULT_JIRA_JQL = "(assignee = currentUser() OR reporter = currentUser() OR creator = currentUser() OR watcher = currentUser() OR voter = currentUser()) AND resolution = Unresolved ORDER BY updated DESC";
 const JIRA_IMPORT_SETTINGS_KEY = "jiraImportSettings";
+const SORT_SETTINGS_KEY = "taskSortSettings";
 const TASKS_CHANGED_MESSAGE = "TASKS_CHANGED";
 const TASKS_CHANGED_FROM_APP_MESSAGE = "TASKS_CHANGED_FROM_APP";
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 let tasks = [];
 let activeFilter = "all";
 let showArchived = false;
+let activeSortField = DEFAULT_SORT_SETTINGS.field;
+let activeSortDirection = DEFAULT_SORT_SETTINGS.direction;
 let savedJiraSettings = null;
 const elements = {
     undoneCount: getElement("undoneCount"),
@@ -29,6 +36,8 @@ const elements = {
     importJiraButton: getElement("importJiraButton"),
     refreshJiraButton: getElement("refreshJiraButton"),
     jiraSavedStatus: getElement("jiraSavedStatus"),
+    sortFieldSelect: getElement("sortFieldSelect"),
+    sortDirectionSelect: getElement("sortDirectionSelect"),
     showArchivedInput: getElement("showArchivedInput"),
     status: getElement("status"),
     taskList: getElement("taskList"),
@@ -46,6 +55,7 @@ async function initialize() {
     bindRuntimeEvents();
     bindEvents();
     await showFirstRunPanelIfNeeded();
+    await loadSortSettings();
     await loadJiraImportSettings();
     await refreshTasks();
 }
@@ -99,6 +109,18 @@ function bindEvents() {
         showArchived = elements.showArchivedInput.checked;
         renderTasks();
     });
+    elements.sortFieldSelect.addEventListener("change", () => {
+        activeSortField = getSortField(elements.sortFieldSelect.value);
+        updateSortControls();
+        renderTasks();
+        void saveSortSettings();
+    });
+    elements.sortDirectionSelect.addEventListener("change", () => {
+        activeSortDirection = getSortDirection(elements.sortDirectionSelect.value);
+        updateSortControls();
+        renderTasks();
+        void saveSortSettings();
+    });
     document.querySelectorAll(".filter-button").forEach((button) => {
         button.addEventListener("click", () => {
             activeFilter = button.dataset.filter;
@@ -109,6 +131,20 @@ function bindEvents() {
 async function showFirstRunPanelIfNeeded() {
     const setupSeen = await getSetting("fileSetupSeen");
     elements.firstRunPanel.hidden = Boolean(setupSeen);
+}
+async function loadSortSettings() {
+    const settings = await getSetting(SORT_SETTINGS_KEY);
+    if (isSortSettings(settings)) {
+        activeSortField = settings.field;
+        activeSortDirection = settings.direction;
+    }
+    updateSortControls();
+}
+async function saveSortSettings() {
+    await setSetting(SORT_SETTINGS_KEY, {
+        field: activeSortField,
+        direction: activeSortDirection
+    });
 }
 async function loadJiraImportSettings() {
     const settings = await getSetting(JIRA_IMPORT_SETTINGS_KEY);
@@ -134,6 +170,7 @@ async function refreshTasks() {
 }
 function renderTasks() {
     updateFilterButtons();
+    updateSortControls();
     const visibleTasks = getVisibleTasks();
     const undoneCount = tasks.filter((task) => !task.done && !task.archived).length;
     elements.undoneCount.textContent =
@@ -192,6 +229,7 @@ function renderTask(task, index, visibleCount) {
     const moveUp = query(item, ".move-up");
     const moveDown = query(item, ".move-down");
     const archiveButton = query(item, ".archive-button");
+    const canMoveTask = activeSortField === "manual";
     doneCheckbox.checked = task.done;
     title.textContent = task.name;
     due.textContent = task.dueDate ? formatDateOnly(task.dueDate) : "None";
@@ -204,8 +242,10 @@ function renderTask(task, index, visibleCount) {
     else {
         sourceLink.hidden = true;
     }
-    moveUp.disabled = index === 0;
-    moveDown.disabled = index === visibleCount - 1;
+    moveUp.disabled = !canMoveTask || index === 0;
+    moveDown.disabled = !canMoveTask || index === visibleCount - 1;
+    moveUp.title = canMoveTask ? "" : "Switch to manual sort to move tasks";
+    moveDown.title = canMoveTask ? "" : "Switch to manual sort to move tasks";
     archiveButton.textContent = task.archived ? "Restore" : "Archive";
     doneCheckbox.addEventListener("change", () => {
         void updateTask(task.id, { done: doneCheckbox.checked });
@@ -255,6 +295,10 @@ async function updateTask(taskId, changes) {
     notifyTasksChangedFromApp();
 }
 async function moveTask(taskId, direction) {
+    if (activeSortField !== "manual") {
+        setStatus("Switch to manual sort to move tasks.");
+        return;
+    }
     const visibleTasks = getVisibleTasks();
     const currentIndex = visibleTasks.findIndex((task) => task.id === taskId);
     const targetIndex = currentIndex + direction;
@@ -283,12 +327,7 @@ function getVisibleTasks() {
         }
         return true;
     })
-        .sort((left, right) => {
-        if (left.order !== right.order) {
-            return left.order - right.order;
-        }
-        return left.createdAt.localeCompare(right.createdAt);
-    });
+        .sort(compareTasks);
 }
 function updateFilterButtons() {
     document.querySelectorAll(".filter-button").forEach((button) => {
@@ -296,6 +335,46 @@ function updateFilterButtons() {
         button.classList.toggle("is-active", isActive);
         button.setAttribute("aria-pressed", String(isActive));
     });
+}
+function updateSortControls() {
+    elements.sortFieldSelect.value = activeSortField;
+    elements.sortDirectionSelect.value = activeSortDirection;
+}
+function compareTasks(left, right) {
+    if (activeSortField === "manual") {
+        return compareManualOrder(left, right, activeSortDirection);
+    }
+    const primary = activeSortField === "createdAt"
+        ? compareIsoDateTime(left.createdAt, right.createdAt, activeSortDirection)
+        : compareDueDate(left, right, activeSortDirection);
+    return primary || compareManualOrder(left, right, "asc");
+}
+function compareManualOrder(left, right, direction) {
+    const orderCompare = left.order - right.order;
+    const result = orderCompare || left.createdAt.localeCompare(right.createdAt);
+    return applySortDirection(result, direction);
+}
+function compareIsoDateTime(leftValue, rightValue, direction) {
+    const leftTime = new Date(leftValue).getTime();
+    const rightTime = new Date(rightValue).getTime();
+    const leftComparable = Number.isNaN(leftTime) ? 0 : leftTime;
+    const rightComparable = Number.isNaN(rightTime) ? 0 : rightTime;
+    return applySortDirection(leftComparable - rightComparable, direction);
+}
+function compareDueDate(left, right, direction) {
+    if (!left.dueDate && !right.dueDate) {
+        return 0;
+    }
+    if (!left.dueDate) {
+        return 1;
+    }
+    if (!right.dueDate) {
+        return -1;
+    }
+    return applySortDirection(left.dueDate.localeCompare(right.dueDate), direction);
+}
+function applySortDirection(value, direction) {
+    return direction === "asc" ? value : -value;
 }
 function isOverdue(task) {
     return Boolean(!task.done && task.dueDate && task.dueDate < todayString());
@@ -540,6 +619,22 @@ function isJiraImportSettings(value) {
         settings.token &&
         settings.jql &&
         settings.savedAt);
+}
+function isSortSettings(value) {
+    if (!value || typeof value !== "object") {
+        return false;
+    }
+    const settings = value;
+    return Boolean(settings.field &&
+        settings.direction &&
+        ["manual", "createdAt", "dueDate"].includes(settings.field) &&
+        ["asc", "desc"].includes(settings.direction));
+}
+function getSortField(value) {
+    return value === "createdAt" || value === "dueDate" ? value : "manual";
+}
+function getSortDirection(value) {
+    return value === "desc" ? "desc" : "asc";
 }
 async function fetchMicrosoftLists(token) {
     const data = await fetchJsonWithBearer("https://graph.microsoft.com/v1.0/me/todo/lists", token);

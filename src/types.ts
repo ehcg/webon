@@ -46,3 +46,5 @@ export interface QuickAddPayload extends QuickAddDraft {
 }
 
 export type TaskFilter = "all" | "todo" | "done";
+export type TaskSortField = "manual" | "createdAt" | "dueDate";
+export type SortDirection = "asc" | "desc";

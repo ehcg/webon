@@ -55,6 +55,8 @@ If capture is not working yet, open WebOn and click **Create test task**. If tha
 
 The quick-add modal closes automatically after 30 seconds if it is not saved. When the task name is changed, the original selected text is still preserved in the notes.
 
+On the WebOn task page, tasks can be filtered by all, to-do, or done; sorted by manual order, creation date, or due date; and switched between ascending and descending order.
+
 ## Local Storage and Backups
 
 - Tasks and screenshot records are stored locally in IndexedDB.

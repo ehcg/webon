@@ -51,7 +51,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -295,6 +296,31 @@ summary {
 .filter-button.is-active {
   background: var(--accent);
   color: var(--accent-text);
+}
+
+.sort-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.sort-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.sort-controls select {
+  min-width: 132px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 8px 9px;
 }
 
 .archive-toggle {
@@ -542,6 +568,10 @@ summary {
 
   .integration-grid {
     grid-template-columns: 1fr;
+  }
+
+  .sort-controls {
+    width: 100%;
   }
 
   .thumbnail-button {

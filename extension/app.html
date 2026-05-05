@@ -126,6 +126,24 @@
           </button>
         </div>
 
+        <div class="sort-controls" aria-label="Task sorting">
+          <label>
+            Sort
+            <select id="sortFieldSelect">
+              <option value="manual">Manual</option>
+              <option value="createdAt">Created date</option>
+              <option value="dueDate">Due date</option>
+            </select>
+          </label>
+          <label>
+            Direction
+            <select id="sortDirectionSelect">
+              <option value="asc">Ascending</option>
+              <option value="desc">Descending</option>
+            </select>
+          </label>
+        </div>
+
         <label class="archive-toggle">
           <input id="showArchivedInput" type="checkbox" />
           Show archived
