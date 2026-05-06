@@ -51,7 +51,8 @@ If capture is not working yet, open WebOn and click **Create test task**. If tha
 1. Right-click any normal webpage, with or without selected text.
 2. Choose **Add selection to task list** to capture selected text, page context, and a screenshot.
 3. Choose **Add manual task** to open a blank modal with no screenshot or page context.
-4. Saved capture tasks include selected text when present, page title, URL, creation timestamp, and visible-page screenshot.
+4. Choose **Create Jira ticket** to open Jira's own create-issue screen in a popup using the saved Jira site.
+5. Saved capture tasks include selected text when present, page title, URL, creation timestamp, and visible-page screenshot.
 
 The quick-add modal closes automatically after 30 seconds if it is not saved. When the task name is changed, the original selected text is still preserved in the notes.
 
@@ -77,6 +78,8 @@ These imports are manual read-only pulls. WebOn does not write back to external 
 
 For Microsoft To Do, paste a Microsoft Graph access token with `Tasks.Read`.
 Jira Cloud does not expose a public REST endpoint for a user's exact notification inbox. WebOn uses a notification-like JQL preset instead: assigned to you, reported or created by you, watched by you, or voted by you, with unresolved issues ordered by latest update. You can edit the JQL before importing. Imported Jira tasks use Jira's issue creation date as their WebOn creation date. After a successful Jira import, WebOn stores the Jira site, email, API token, and JQL locally in IndexedDB so **Refresh Jira** can re-run the saved import. These saved credentials are not included in JSON backups.
+
+The **Create Jira ticket** context-menu action uses the saved Jira site to open Jira's native create-issue screen with the source page context prefilled where Jira accepts direct-link fields. It does not create the issue through the API.
 
 ## Development
 

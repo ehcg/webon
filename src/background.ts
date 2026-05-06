@@ -1,6 +1,7 @@
 import {
   createId,
   deleteScreenshot,
+  getSetting,
   getNextOrder,
   saveScreenshot,
   saveTask
@@ -11,10 +12,21 @@ declare const chrome: any;
 
 const QUICK_MENU_ID = "add-selection-to-task-list";
 const DIRECT_MENU_ID = "add-task-directly";
+const CREATE_JIRA_MENU_ID = "create-jira-ticket";
 const OPEN_LIST_MENU_ID = "open-webon-task-list";
+const JIRA_IMPORT_SETTINGS_KEY = "jiraImportSettings";
 const TASKS_CHANGED_MESSAGE = "TASKS_CHANGED";
 const TASKS_CHANGED_FROM_APP_MESSAGE = "TASKS_CHANGED_FROM_APP";
 const TASK_NAME_LIMIT = 90;
+const JIRA_DESCRIPTION_LIMIT = 3000;
+
+type JiraImportSettings = {
+  siteUrl: string;
+  email: string;
+  token: string;
+  jql: string;
+  savedAt: string;
+};
 
 let contextMenuRegistration: Promise<void> = Promise.resolve();
 
@@ -35,6 +47,10 @@ chrome.contextMenus.onClicked.addListener((info: any, tab: any) => {
 
   if (info.menuItemId === DIRECT_MENU_ID) {
     void handleDirectAdd(info, tab);
+  }
+
+  if (info.menuItemId === CREATE_JIRA_MENU_ID) {
+    void handleCreateJiraTicket(info, tab);
   }
 
   if (info.menuItemId === OPEN_LIST_MENU_ID) {
@@ -119,6 +135,7 @@ async function recreateContextMenus(): Promise<void> {
     await removeAllContextMenus();
     createMenuItem(QUICK_MENU_ID, "Add selection to task list");
     createMenuItem(DIRECT_MENU_ID, "Add manual task");
+    createMenuItem(CREATE_JIRA_MENU_ID, "Create Jira ticket");
     createMenuItem(OPEN_LIST_MENU_ID, "Open WebOn task list");
     console.info("WebOn context menus registered.");
   } catch (error) {
@@ -172,6 +189,81 @@ async function handleDirectAdd(info: any, tab: any): Promise<void> {
   } catch (error) {
     console.warn("Could not show manual task popup.", error);
   }
+}
+
+async function handleCreateJiraTicket(info: any, tab: any): Promise<void> {
+  const settings = await getSetting<JiraImportSettings>(JIRA_IMPORT_SETTINGS_KEY);
+  if (!isJiraImportSettings(settings)) {
+    openTaskList();
+    return;
+  }
+
+  const selectedText = await resolveSelectedText(info, tab);
+  const url = buildJiraCreateUrl(settings.siteUrl, info, tab, selectedText);
+  openPopupWindow(url);
+}
+
+function buildJiraCreateUrl(
+  siteUrl: string,
+  info: any,
+  tab: any,
+  selectedText: string
+): string {
+  const pageUrl = tab?.url || info.pageUrl || "";
+  const pageTitle = tab?.title || pageUrl || "Untitled page";
+  const summarySeed = selectedText || pageTitle || "New Jira ticket";
+  const summary = truncateTaskName(summarySeed);
+  const description = truncateText(
+    [
+      selectedText ? `Selected text:\n${selectedText}` : "",
+      pageTitle ? `Source title: ${pageTitle}` : "",
+      pageUrl ? `Source URL: ${pageUrl}` : ""
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+    JIRA_DESCRIPTION_LIMIT
+  );
+  const url = new URL(
+    `${siteUrl.replace(/\/+$/, "")}/secure/CreateIssueDetails!init.jspa`
+  );
+
+  url.searchParams.set("summary", summary);
+  if (description) {
+    url.searchParams.set("description", description);
+  }
+
+  return url.toString();
+}
+
+function isJiraImportSettings(value: unknown): value is JiraImportSettings {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const settings = value as Partial<JiraImportSettings>;
+  return Boolean(settings.siteUrl);
+}
+
+function openPopupWindow(url: string): void {
+  if (!chrome.windows?.create) {
+    chrome.tabs.create({ url });
+    return;
+  }
+
+  chrome.windows.create(
+    {
+      url,
+      type: "popup",
+      width: 1100,
+      height: 850,
+      focused: true
+    },
+    () => {
+      if (chrome.runtime.lastError) {
+        chrome.tabs.create({ url });
+      }
+    }
+  );
 }
 
 function createManualDraft(): QuickAddDraft {
@@ -364,6 +456,14 @@ function truncateTaskName(text: string): string {
     return compact;
   }
   return `${compact.slice(0, TASK_NAME_LIMIT - 3)}...`;
+}
+
+function truncateText(text: string, limit: number): string {
+  const compact = text.trim();
+  if (compact.length <= limit) {
+    return compact;
+  }
+  return `${compact.slice(0, limit - 3)}...`;
 }
 
 function getErrorMessage(error: unknown): string {
