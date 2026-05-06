@@ -19,6 +19,8 @@ const TASKS_CHANGED_MESSAGE = "TASKS_CHANGED";
 const TASKS_CHANGED_FROM_APP_MESSAGE = "TASKS_CHANGED_FROM_APP";
 const TASK_NAME_LIMIT = 90;
 const JIRA_DESCRIPTION_LIMIT = 3000;
+const DEFAULT_JIRA_PROJECT = "Nexus";
+const DEFAULT_JIRA_ISSUE_TYPE = "dtask";
 
 type JiraImportSettings = {
   siteUrl: string;
@@ -26,6 +28,24 @@ type JiraImportSettings = {
   token: string;
   jql: string;
   savedAt: string;
+};
+
+type JiraProject = {
+  id: string;
+  key?: string;
+  name?: string;
+  issueTypes?: JiraIssueType[];
+};
+
+type JiraIssueType = {
+  id: string;
+  name?: string;
+  untranslatedName?: string;
+};
+
+type JiraCreateDefaults = {
+  projectId: string;
+  issueTypeId: string;
 };
 
 let contextMenuRegistration: Promise<void> = Promise.resolve();
@@ -199,16 +219,16 @@ async function handleCreateJiraTicket(info: any, tab: any): Promise<void> {
   }
 
   const selectedText = await resolveSelectedText(info, tab);
-  const url = buildJiraCreateUrl(settings.siteUrl, info, tab, selectedText);
+  const url = await buildJiraCreateUrl(settings, info, tab, selectedText);
   openPopupWindow(url);
 }
 
-function buildJiraCreateUrl(
-  siteUrl: string,
+async function buildJiraCreateUrl(
+  settings: JiraImportSettings,
   info: any,
   tab: any,
   selectedText: string
-): string {
+): Promise<string> {
   const pageUrl = tab?.url || info.pageUrl || "";
   const pageTitle = tab?.title || pageUrl || "Untitled page";
   const summarySeed = selectedText || pageTitle || "New Jira ticket";
@@ -223,16 +243,151 @@ function buildJiraCreateUrl(
       .join("\n\n"),
     JIRA_DESCRIPTION_LIMIT
   );
+  const defaults = await resolveJiraCreateDefaults(settings);
+  const route = defaults ? "CreateIssue.jspa" : "CreateIssue!default.jspa";
   const url = new URL(
-    `${siteUrl.replace(/\/+$/, "")}/secure/CreateIssue!default.jspa`
+    `${settings.siteUrl.replace(/\/+$/, "")}/secure/${route}`
   );
 
+  if (defaults) {
+    url.searchParams.set("pid", defaults.projectId);
+    url.searchParams.set("issuetype", defaults.issueTypeId);
+  }
   url.searchParams.set("summary", summary);
   if (description) {
     url.searchParams.set("description", description);
   }
 
   return url.toString();
+}
+
+async function resolveJiraCreateDefaults(
+  settings: JiraImportSettings
+): Promise<JiraCreateDefaults | null> {
+  if (!settings.email || !settings.token) {
+    return null;
+  }
+
+  try {
+    const project = await findJiraProject(settings, DEFAULT_JIRA_PROJECT);
+    if (!project) {
+      return null;
+    }
+
+    const issueTypes =
+      project.issueTypes && project.issueTypes.length > 0
+        ? project.issueTypes
+        : await fetchJiraProjectIssueTypes(settings, project.id);
+    const issueType = findJiraIssueType(issueTypes, DEFAULT_JIRA_ISSUE_TYPE);
+
+    if (!issueType) {
+      return null;
+    }
+
+    return {
+      projectId: project.id,
+      issueTypeId: issueType.id
+    };
+  } catch (error) {
+    console.warn("Could not resolve Jira create defaults.", error);
+    return null;
+  }
+}
+
+async function findJiraProject(
+  settings: JiraImportSettings,
+  projectName: string
+): Promise<JiraProject | null> {
+  const url = new URL(
+    `${settings.siteUrl.replace(/\/+$/, "")}/rest/api/3/project/search`
+  );
+  url.searchParams.set("query", projectName);
+  const data = await fetchJiraJson(settings, url.toString());
+  const projects = Array.isArray(data.values) ? data.values : [];
+
+  return findBestJiraProject(projects, projectName);
+}
+
+async function fetchJiraProjectIssueTypes(
+  settings: JiraImportSettings,
+  projectId: string
+): Promise<JiraIssueType[]> {
+  const url = new URL(
+    `${settings.siteUrl.replace(/\/+$/, "")}/rest/api/3/project/${encodeURIComponent(
+      projectId
+    )}`
+  );
+  url.searchParams.set("expand", "issueTypes");
+  const data = await fetchJiraJson(settings, url.toString());
+
+  return Array.isArray(data.issueTypes) ? data.issueTypes : [];
+}
+
+async function fetchJiraJson(
+  settings: JiraImportSettings,
+  url: string
+): Promise<any> {
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Basic ${btoa(`${settings.email}:${settings.token}`)}`,
+      Accept: "application/json"
+    }
+  });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : {};
+
+  if (!response.ok) {
+    throw new Error(data.message || response.statusText);
+  }
+
+  return data;
+}
+
+function findBestJiraProject(
+  projects: JiraProject[],
+  projectName: string
+): JiraProject | null {
+  const normalizedProjectName = normalizeJiraName(projectName);
+
+  return (
+    projects.find(
+      (project) =>
+        normalizeJiraName(project.key || "") === normalizedProjectName ||
+        normalizeJiraName(project.name || "") === normalizedProjectName
+    ) ||
+    projects.find(
+      (project) =>
+        normalizeJiraName(project.key || "").includes(normalizedProjectName) ||
+        normalizeJiraName(project.name || "").includes(normalizedProjectName)
+    ) ||
+    projects[0] ||
+    null
+  );
+}
+
+function findJiraIssueType(
+  issueTypes: JiraIssueType[],
+  issueTypeName: string
+): JiraIssueType | null {
+  const normalizedIssueType = normalizeJiraName(issueTypeName);
+
+  return (
+    issueTypes.find(
+      (issueType) =>
+        normalizeJiraName(issueType.name || "") === normalizedIssueType ||
+        normalizeJiraName(issueType.untranslatedName || "") === normalizedIssueType
+    ) ||
+    issueTypes.find(
+      (issueType) =>
+        normalizeJiraName(issueType.name || "").includes(normalizedIssueType) ||
+        normalizeJiraName(issueType.untranslatedName || "").includes(normalizedIssueType)
+    ) ||
+    null
+  );
+}
+
+function normalizeJiraName(value: string): string {
+  return value.toLowerCase().replace(/[\s_-]+/g, "").trim();
 }
 
 function isJiraImportSettings(value: unknown): value is JiraImportSettings {

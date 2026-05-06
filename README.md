@@ -79,7 +79,7 @@ These imports are manual read-only pulls. WebOn does not write back to external 
 For Microsoft To Do, paste a Microsoft Graph access token with `Tasks.Read`.
 Jira Cloud does not expose a public REST endpoint for a user's exact notification inbox. WebOn uses a notification-like JQL preset instead: assigned to you, reported or created by you, watched by you, or voted by you, with unresolved issues ordered by latest update. You can edit the JQL before importing. Imported Jira tasks use Jira's issue creation date as their WebOn creation date. After a successful Jira import, WebOn stores the Jira site, email, API token, and JQL locally in IndexedDB so **Refresh Jira** can re-run the saved import. These saved credentials are not included in JSON backups.
 
-The **Create Jira ticket** context-menu action uses the saved Jira site to open Jira's native create-issue screen so you can choose the project and issue type. WebOn passes source page context in the URL where Jira accepts direct-link fields, but it does not create the issue through the API.
+The **Create Jira ticket** context-menu action uses the saved Jira site to open Jira's native create-issue screen. WebOn tries to default to the `Nexus` project and `dtask` issue type, passes source page context in the URL where Jira accepts direct-link fields, and does not create the issue through the API.
 
 ## Development
 
