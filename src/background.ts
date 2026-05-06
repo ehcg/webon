@@ -224,7 +224,7 @@ function buildJiraCreateUrl(
     JIRA_DESCRIPTION_LIMIT
   );
   const url = new URL(
-    `${siteUrl.replace(/\/+$/, "")}/secure/CreateIssueDetails!init.jspa`
+    `${siteUrl.replace(/\/+$/, "")}/secure/CreateIssue!default.jspa`
   );
 
   url.searchParams.set("summary", summary);

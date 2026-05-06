@@ -159,7 +159,7 @@ function buildJiraCreateUrl(siteUrl, info, tab, selectedText) {
     ]
         .filter(Boolean)
         .join("\n\n"), JIRA_DESCRIPTION_LIMIT);
-    const url = new URL(`${siteUrl.replace(/\/+$/, "")}/secure/CreateIssueDetails!init.jspa`);
+    const url = new URL(`${siteUrl.replace(/\/+$/, "")}/secure/CreateIssue!default.jspa`);
     url.searchParams.set("summary", summary);
     if (description) {
         url.searchParams.set("description", description);
