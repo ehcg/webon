@@ -1,4 +1,4 @@
-import { createId, exportBackup, getAllTasks, getNextOrder, getScreenshot, getSetting, importBackup, saveTask, saveTasks, setSetting } from "./db.js";
+import { clearTaskData, createId, exportBackup, getAllTasks, getNextOrder, getScreenshot, getSetting, importBackup, saveTask, saveTasks, setSetting } from "./db.js";
 const DEFAULT_FILE_NAME = "webon-data.json";
 const DEFAULT_SORT_SETTINGS = {
     field: "manual",
@@ -21,6 +21,7 @@ const elements = {
     chooseFileButton: getElement("chooseFileButton"),
     copyLinkButton: getElement("copyLinkButton"),
     createTestTaskButton: getElement("createTestTaskButton"),
+    nukeListButton: getElement("nukeListButton"),
     saveFileButton: getElement("saveFileButton"),
     exportButton: getElement("exportButton"),
     importInput: getElement("importInput"),
@@ -80,6 +81,9 @@ function bindEvents() {
     });
     elements.createTestTaskButton.addEventListener("click", () => {
         void createTestTask();
+    });
+    elements.nukeListButton.addEventListener("click", () => {
+        void nukeTaskList();
     });
     elements.firstRunChooseButton.addEventListener("click", () => {
         void chooseSaveFile();
@@ -338,11 +342,17 @@ function updateFilterButtons() {
 }
 function updateSortControls() {
     elements.sortFieldSelect.value = activeSortField;
+    if (activeSortField === "manual") {
+        elements.sortDirectionSelect.value = "manual";
+        elements.sortDirectionSelect.disabled = true;
+        return;
+    }
+    elements.sortDirectionSelect.disabled = false;
     elements.sortDirectionSelect.value = activeSortDirection;
 }
 function compareTasks(left, right) {
     if (activeSortField === "manual") {
-        return compareManualOrder(left, right, activeSortDirection);
+        return compareManualOrder(left, right, "asc");
     }
     const primary = activeSortField === "createdAt"
         ? compareIsoDateTime(left.createdAt, right.createdAt, activeSortDirection)
@@ -499,6 +509,22 @@ async function createTestTask() {
     await refreshTasks();
     await syncToChosenFile(false);
     setStatus("Created a WebOn test task.");
+    notifyTasksChangedFromApp();
+}
+async function nukeTaskList() {
+    if (tasks.length === 0) {
+        setStatus("The WebOn task list is already empty.");
+        return;
+    }
+    const confirmed = window.confirm("Nuke the whole WebOn task list? This deletes all local tasks and screenshots. Saved Jira settings stay.");
+    if (!confirmed) {
+        setStatus("Kept the WebOn task list.");
+        return;
+    }
+    await clearTaskData();
+    await refreshTasks();
+    await syncToChosenFile(false);
+    setStatus("Nuked the local WebOn task list.");
     notifyTasksChangedFromApp();
 }
 async function importMicrosoftTodo() {
@@ -685,7 +711,7 @@ async function fetchJiraIssues(siteUrl, email, token, jql) {
         const url = new URL(`${siteUrl}/rest/api/3/search/jql`);
         url.searchParams.set("jql", jql);
         url.searchParams.set("maxResults", "100");
-        url.searchParams.set("fields", "summary,status,duedate,description,assignee,priority");
+        url.searchParams.set("fields", "summary,status,duedate,description,assignee,priority,created");
         if (nextPageToken) {
             url.searchParams.set("nextPageToken", nextPageToken);
         }
@@ -718,7 +744,7 @@ function mapJiraIssue(siteUrl, issue) {
         notes: joinLines([status, priority, assignee, description]),
         pageTitle: "Jira",
         pageUrl: issueUrl,
-        createdAt: new Date().toISOString(),
+        createdAt: normalizeDateTime(fields.created),
         done: fields.status?.statusCategory?.key === "done",
         sourceKey: `jira:${siteUrl}:${issue.key}`,
         sourceName: "Jira"
@@ -743,6 +769,7 @@ async function saveImportedTasks(importedTasks) {
                 notes: importedTask.notes,
                 pageTitle: importedTask.pageTitle,
                 pageUrl: importedTask.pageUrl,
+                createdAt: importedTask.createdAt,
                 done: existingTask.done || importedTask.done,
                 sourceName: importedTask.sourceName
             };
@@ -787,6 +814,7 @@ function hasTaskChanges(task, nextTask) {
         task.notes !== nextTask.notes ||
         task.pageTitle !== nextTask.pageTitle ||
         task.pageUrl !== nextTask.pageUrl ||
+        task.createdAt !== nextTask.createdAt ||
         task.done !== nextTask.done ||
         task.sourceName !== nextTask.sourceName);
 }

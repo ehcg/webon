@@ -1,4 +1,5 @@
 import {
+  clearTaskData,
   createId,
   exportBackup,
   getAllTasks,
@@ -93,6 +94,7 @@ const elements = {
   chooseFileButton: getElement<HTMLButtonElement>("chooseFileButton"),
   copyLinkButton: getElement<HTMLButtonElement>("copyLinkButton"),
   createTestTaskButton: getElement<HTMLButtonElement>("createTestTaskButton"),
+  nukeListButton: getElement<HTMLButtonElement>("nukeListButton"),
   saveFileButton: getElement<HTMLButtonElement>("saveFileButton"),
   exportButton: getElement<HTMLButtonElement>("exportButton"),
   importInput: getElement<HTMLInputElement>("importInput"),
@@ -157,6 +159,9 @@ function bindEvents(): void {
   });
   elements.createTestTaskButton.addEventListener("click", () => {
     void createTestTask();
+  });
+  elements.nukeListButton.addEventListener("click", () => {
+    void nukeTaskList();
   });
   elements.firstRunChooseButton.addEventListener("click", () => {
     void chooseSaveFile();
@@ -466,12 +471,19 @@ function updateFilterButtons(): void {
 
 function updateSortControls(): void {
   elements.sortFieldSelect.value = activeSortField;
+  if (activeSortField === "manual") {
+    elements.sortDirectionSelect.value = "manual";
+    elements.sortDirectionSelect.disabled = true;
+    return;
+  }
+
+  elements.sortDirectionSelect.disabled = false;
   elements.sortDirectionSelect.value = activeSortDirection;
 }
 
 function compareTasks(left: TodoTask, right: TodoTask): number {
   if (activeSortField === "manual") {
-    return compareManualOrder(left, right, activeSortDirection);
+    return compareManualOrder(left, right, "asc");
   }
 
   const primary =
@@ -667,6 +679,27 @@ async function createTestTask(): Promise<void> {
   await refreshTasks();
   await syncToChosenFile(false);
   setStatus("Created a WebOn test task.");
+  notifyTasksChangedFromApp();
+}
+
+async function nukeTaskList(): Promise<void> {
+  if (tasks.length === 0) {
+    setStatus("The WebOn task list is already empty.");
+    return;
+  }
+
+  const confirmed = window.confirm(
+    "Nuke the whole WebOn task list? This deletes all local tasks and screenshots. Saved Jira settings stay."
+  );
+  if (!confirmed) {
+    setStatus("Kept the WebOn task list.");
+    return;
+  }
+
+  await clearTaskData();
+  await refreshTasks();
+  await syncToChosenFile(false);
+  setStatus("Nuked the local WebOn task list.");
   notifyTasksChangedFromApp();
 }
 
@@ -917,7 +950,10 @@ async function fetchJiraIssues(
     const url = new URL(`${siteUrl}/rest/api/3/search/jql`);
     url.searchParams.set("jql", jql);
     url.searchParams.set("maxResults", "100");
-    url.searchParams.set("fields", "summary,status,duedate,description,assignee,priority");
+    url.searchParams.set(
+      "fields",
+      "summary,status,duedate,description,assignee,priority,created"
+    );
     if (nextPageToken) {
       url.searchParams.set("nextPageToken", nextPageToken);
     }
@@ -954,7 +990,7 @@ function mapJiraIssue(siteUrl: string, issue: any): ImportedTask {
     notes: joinLines([status, priority, assignee, description]),
     pageTitle: "Jira",
     pageUrl: issueUrl,
-    createdAt: new Date().toISOString(),
+    createdAt: normalizeDateTime(fields.created),
     done: fields.status?.statusCategory?.key === "done",
     sourceKey: `jira:${siteUrl}:${issue.key}`,
     sourceName: "Jira"
@@ -987,6 +1023,7 @@ async function saveImportedTasks(
         notes: importedTask.notes,
         pageTitle: importedTask.pageTitle,
         pageUrl: importedTask.pageUrl,
+        createdAt: importedTask.createdAt,
         done: existingTask.done || importedTask.done,
         sourceName: importedTask.sourceName
       };
@@ -1037,6 +1074,7 @@ function hasTaskChanges(task: TodoTask, nextTask: TodoTask): boolean {
     task.notes !== nextTask.notes ||
     task.pageTitle !== nextTask.pageTitle ||
     task.pageUrl !== nextTask.pageUrl ||
+    task.createdAt !== nextTask.createdAt ||
     task.done !== nextTask.done ||
     task.sourceName !== nextTask.sourceName
   );

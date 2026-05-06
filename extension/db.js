@@ -77,6 +77,13 @@ export async function saveTasks(tasks) {
     }
     await transactionDone(transaction);
 }
+export async function clearTaskData() {
+    const db = await openTodoDatabase();
+    const transaction = db.transaction([TASK_STORE, SCREENSHOT_STORE], "readwrite");
+    transaction.objectStore(TASK_STORE).clear();
+    transaction.objectStore(SCREENSHOT_STORE).clear();
+    await transactionDone(transaction);
+}
 export async function getNextOrder() {
     const tasks = await getAllTasks();
     if (tasks.length === 0) {
